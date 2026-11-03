@@ -1,6 +1,7 @@
 import logging
 import os
 import random
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
@@ -189,6 +190,13 @@ class AlpacaFeed(DataFeed):
         Subscriptions are batched in groups of 100 to avoid Alpaca's WebSocket
         message size limit (~16 KB per subscribe request).
         """
+        from scanner.data import alpaca_poll
+        if not alpaca_poll.alpaca_streaming():
+            # ALPACA_STREAM=0: another app holds the account's one websocket (scanner/data/alpaca_poll.py).
+            self._poll_stop = threading.Event()
+            alpaca_poll.poll_minute_bars(self._fetch_recent_minute_bars, symbols, callback, self._poll_stop)
+            return
+
         from alpaca.data.live import StockDataStream
 
         _BATCH = 100
@@ -226,6 +234,9 @@ class AlpacaFeed(DataFeed):
 
     def stop_stream(self) -> None:
         """Stop the WebSocket stream gracefully."""
+        poll_stop = getattr(self, "_poll_stop", None)
+        if poll_stop is not None:
+            poll_stop.set()
         stream = getattr(self, "_stream", None)
         if stream is not None:
             try:
@@ -233,6 +244,12 @@ class AlpacaFeed(DataFeed):
             except TimeoutError:
                 pass  # loop already stopped; Alpaca's finally: self.stop() is a no-op
             log.info("Stream stopped")
+
+    def _fetch_recent_minute_bars(self, symbols: list[str], start: datetime, end: datetime) -> pd.DataFrame:
+        """1-minute bars for many symbols, unadjusted like the stream's. Used by ALPACA_STREAM=0."""
+        req = StockBarsRequest(symbol_or_symbols=symbols, timeframe=TimeFrame.Minute,
+                               start=start, end=end, feed=market_data_feed())
+        return self._client.get_stock_bars(req).df
 
     def get_bars_range(
         self,
