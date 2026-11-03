@@ -91,6 +91,38 @@ def test_shared_mode_refuses_to_sign_in_here(files, monkeypatch):
     assert shared_login.signin_hint() == "sign in to Schwab again in OpenVector"
 
 
+def _shared_env(monkeypatch, src, db, key):
+    monkeypatch.setenv("SCHWAB_SHARED_TOKEN_FILE", str(src))
+    monkeypatch.setenv("SCHWAB_SHARED_TOKEN_KEY", key)
+    monkeypatch.setattr(shared_login, "TOKENS_DB", db)
+    monkeypatch.setattr(schwab, "_TOKENS_DB", db)
+
+
+def test_token_age_check_copies_the_shared_login_first(files, monkeypatch):
+    src, db, key = files
+    _shared_env(monkeypatch, src, db, key)
+    _write(src, key, created=time.time() - 2 * 86400)
+    age = schwab.refresh_token_age_days(db)          # what the feed checks before starting
+    assert age is not None and abs(age - 2.0) < 0.01
+
+
+def test_feed_in_shared_mode_never_prompts_for_a_sign_in(files, monkeypatch, tmp_path):
+    import schwabdev
+    src, db, key = files
+    _shared_env(monkeypatch, src, db, key)
+    monkeypatch.setenv("SCHWAB_APP_KEY", "k" * 32)
+    monkeypatch.setenv("SCHWAB_APP_SECRET", "s" * 16)
+    monkeypatch.setenv("SCHWAB_SHARED_APP_NAME", "OpenVector")
+    monkeypatch.setattr(shared_login, "start_sync_thread", lambda *_a, **_k: None)
+    _write(src, key)
+    seen = {}
+    monkeypatch.setattr(schwabdev, "Client", lambda **kw: seen.update(kw) or object())
+    schwab.SchwabFeed(cache_dir=tmp_path / "d", intraday_cache_dir=tmp_path / "i")
+    assert seen["open_browser_for_auth"] is False
+    with pytest.raises(RuntimeError, match="sign in to Schwab again in OpenVector"):
+        seen["call_on_auth"]("https://example.invalid")
+
+
 def test_sync_thread_picks_up_a_new_sign_in(files, monkeypatch):
     src, db, key = files
     monkeypatch.setenv("SCHWAB_SHARED_TOKEN_FILE", str(src))
