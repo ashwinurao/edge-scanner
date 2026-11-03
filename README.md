@@ -224,8 +224,11 @@ it reads that file (read-only) every minute and copies a new login into its own 
 The code is in `scanner/data/shared_login.py`.
 
 In Schwab mode the scanner also opens a Schwab streamer. Schwab is understood to allow one streamer
-per user (not tested with this scanner), so do not run it beside another app that holds a Schwab
-stream on the same account until that is checked.
+per user (not tested with this scanner). Beside another app that holds a Schwab stream on the same
+account, set `SCHWAB_STREAM=0`: the scanner then never opens a streamer and builds every symbol's
+bars from REST quotes polled every 10 seconds (high and low are approximate). Those polls and the
+history downloads share Schwab's request limit with the other app, so also lower `SCHWAB_MAX_RPM`
+(default 110) to leave it room.
 
 ## Development
 

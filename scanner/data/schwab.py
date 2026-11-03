@@ -114,6 +114,11 @@ class _RateLimiter:
 _LIMITER = _RateLimiter(_MAX_RPM)
 
 
+def schwab_streaming() -> bool:
+    """False when SCHWAB_STREAM=0: the scanner then never opens a Schwab streamer."""
+    return os.environ.get("SCHWAB_STREAM", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
 def refresh_token_age_days(db: Path = _TOKENS_DB) -> float | None:
     """Days since Schwab last issued the refresh token, or None if unknown.
     Reads only the timestamp column, never a token."""
@@ -708,9 +713,15 @@ class SchwabFeed(DataFeed):
         4 low, 5 close, 6 volume, 7 chart time (epoch ms), 8 chart day.
         """
         from scanner.data.quote_bars import QuoteBarBuilder
-        # schwabdev 4.0.0 exposes no Client.stream property; construct it.
-        import schwabdev
-        stream = schwabdev.Stream(self._client)
+        # SCHWAB_STREAM=0: never open the streamer, every symbol is polled. Schwab is
+        # understood to allow one streamer per user, and another app on the same
+        # account (Ash's OpenVector) may hold it.
+        streaming = schwab_streaming()
+        stream = None
+        if streaming:
+            # schwabdev 4.0.0 exposes no Client.stream property; construct it.
+            import schwabdev
+            stream = schwabdev.Stream(self._client)
         self._stream = stream
         self._stop_evt.clear()
 
@@ -723,11 +734,15 @@ class SchwabFeed(DataFeed):
                 callback(bar)
 
         synthetic = os.environ.get("SCHWAB_SYNTHETIC_BARS", "1").strip().lower() not in ("0", "false", "no", "off")
-        cap = self.CHART_EQUITY_CAP
+        if not streaming and not synthetic:
+            raise RuntimeError("SCHWAB_STREAM=0 needs SCHWAB_SYNTHETIC_BARS on: without the streamer "
+                               "every bar is built from polled quotes.")
+        cap = self.CHART_EQUITY_CAP if streaming else 0
+        level_one_cap = self.LEVELONE_CAP if streaming else 0
         self.streamed_symbols = list(symbols[:cap])
         rest = list(symbols[cap:])
-        self.quote_streamed_symbols = rest[: self.LEVELONE_CAP] if synthetic else []
-        self.polled_symbols = rest[self.LEVELONE_CAP:] if synthetic else []
+        self.quote_streamed_symbols = rest[:level_one_cap] if synthetic else []
+        self.polled_symbols = rest[level_one_cap:] if synthetic else []
         self.unstreamed_symbols = [] if synthetic else rest
         self.quote_bars = builder = QuoteBarBuilder(_emit)
         tiers_lock = threading.Lock()
@@ -770,13 +785,17 @@ class SchwabFeed(DataFeed):
         if self.unstreamed_symbols:
             self._warn_cap(cap)
 
-        stream.start(receiver=_receiver, daemon=True)
-        # Subscribe in chunks; Schwab caps the key list per request.
-        _CHUNK = 250
-        for i in range(0, len(self.streamed_symbols), _CHUNK):
-            stream.send(stream.chart_equity(self.streamed_symbols[i : i + _CHUNK], "0,1,2,3,4,5,6,7,8"))
-        for i in range(0, len(self.quote_streamed_symbols), _CHUNK):
-            stream.send(stream.level_one_equities(self.quote_streamed_symbols[i : i + _CHUNK], "0,3,8,9,10,11"))
+        if stream is not None:
+            stream.start(receiver=_receiver, daemon=True)
+            # Subscribe in chunks; Schwab caps the key list per request.
+            _CHUNK = 250
+            for i in range(0, len(self.streamed_symbols), _CHUNK):
+                stream.send(stream.chart_equity(self.streamed_symbols[i : i + _CHUNK], "0,1,2,3,4,5,6,7,8"))
+            for i in range(0, len(self.quote_streamed_symbols), _CHUNK):
+                stream.send(stream.level_one_equities(self.quote_streamed_symbols[i : i + _CHUNK], "0,3,8,9,10,11"))
+        else:
+            print(f"       Schwab streamer off (SCHWAB_STREAM=0): all {len(self.polled_symbols):,} symbols on "
+                  f"bars built from REST quotes polled every {self.POLL_SECONDS:g}s.", flush=True)
         log.info("Schwab: %d symbols on real bars, %d on streamed quotes, %d on polled quotes",
                  len(self.streamed_symbols), len(self.quote_streamed_symbols), len(self.polled_symbols))
         if synthetic and rest:
