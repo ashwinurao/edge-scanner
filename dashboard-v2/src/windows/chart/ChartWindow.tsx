@@ -7,6 +7,7 @@ import type { Bar, ChartConfig, ChartOverlays, ChartTimeframe } from '../../type
 import { api } from '../../lib/api'
 import { toSecET, isExtended, etDate } from '../../lib/time'
 import { calcEMA, calcSMA, pmHighLow, priorDayHL, type Pt } from '../../lib/chartMath'
+import { calcPremarketVWAP } from '../../lib/pmVwap'
 import { readChartPalette, THEME_EVENT, type ChartPalette } from '../../lib/theme'
 import { useLinkedSymbol, useLinkedAlert, linkSymbol } from '../../stores/linkStore'
 import { useSetups } from '../../stores/setupsStore'
@@ -61,7 +62,7 @@ interface Refs {
   chart: IChartApi
   candles: ISeriesApi<'Candlestick'>
   volume: ISeriesApi<'Histogram'>
-  lines: Partial<Record<'vwap' | 'ema9' | 'ema21' | 'sma50' | 'sma100' | 'sma200', Line>>
+  lines: Partial<Record<'vwap' | 'pmVwap' | 'ema9' | 'ema21' | 'sma50' | 'sma100' | 'sma200', Line>>
   priceLines: IPriceLine[]
 }
 
@@ -138,7 +139,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       chart.applyOptions({ layout: { background: { type: ColorType.Solid, color: p.bg }, textColor: p.text }, grid: { vertLines: { color: p.grid }, horzLines: { color: p.grid } }, rightPriceScale: { borderColor: p.border }, timeScale: { borderColor: p.border } })
       candles.applyOptions({ upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down })
       const L = refs.current?.lines
-      L?.vwap?.applyOptions({ color: p.vwap }); L?.ema9?.applyOptions({ color: p.ema9 }); L?.ema21?.applyOptions({ color: p.ema21 })
+      L?.vwap?.applyOptions({ color: p.vwap }); L?.pmVwap?.applyOptions({ color: p.vwap }); L?.ema9?.applyOptions({ color: p.ema9 }); L?.ema21?.applyOptions({ color: p.ema21 })
       L?.sma50?.applyOptions({ color: p.sma50 }); L?.sma100?.applyOptions({ color: p.sma100 }); L?.sma200?.applyOptions({ color: p.sma200 })
     }
     window.addEventListener(THEME_EVENT, onTheme)
@@ -182,6 +183,13 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     const rth = session ? visibleBars.filter(b => !isExtended(b.t)) : visibleBars
     // VWAP is the level the engine gates on: solid, 2px, labelled on the axis, restarts each day.
     setLine('vwap', o.vwap && session, pal.vwap, () => calcSessionVWAP(rth), 2, LineStyle.Solid, 'VWAP')
+    // Premarket VWAP (04:00-09:29), dashed, with the VWAP chip when extended hours are shown.
+    // Display only: the engine's VWAP starts at 09:30 (src/lib/pmVwap.ts).
+    const pmOn = o.vwap && session && win.extended
+    const pmLine = line('pmVwap', pal.vwap, 1, LineStyle.Dashed, 'PM VWAP')
+    pmLine.applyOptions({ visible: pmOn, color: pal.vwap })
+    pmLine.setData(pmOn ? calcPremarketVWAP(visibleBars).map(p => (p.value === undefined
+      ? { time: p.time as UTCTimestamp } : { time: p.time as UTCTimestamp, value: p.value })) : [])
     setLine('ema9', o.ema9, pal.ema9, () => calcEMA(visibleBars, 9, toSecET), 1, LineStyle.Solid, '9')
     setLine('ema21', o.ema21, pal.ema21, () => calcEMA(visibleBars, 21, toSecET), 1, LineStyle.Solid, '21')
     // SMAs are period-based on the chart's own bars (SMA200 on 5m = 200 five-minute
@@ -289,7 +297,7 @@ export function ChartSettings({ win, onChange }: { win: ChartConfig; onChange(p:
           <div className="chart-tf">{TFS.map(tf => <button key={tf} className={win.timeframe === tf ? 'on' : ''} onClick={() => onChange({ timeframe: tf })}>{tf}</button>)}</div>
         </Field>
       </div>
-      <Field label="Intraday overlays">{t('vwap', 'Session VWAP')}{t('ema9', 'EMA 9')}{t('ema21', 'EMA 21')}{t('volume', 'Volume')}</Field>
+      <Field label="Intraday overlays">{t('vwap', 'Session VWAP (and premarket VWAP with extended hours)')}{t('ema9', 'EMA 9')}{t('ema21', 'EMA 21')}{t('volume', 'Volume')}</Field>
       <Field label="Moving averages (on this timeframe's bars)">{t('sma50', 'SMA 50')}{t('sma100', 'SMA 100')}{t('sma200', 'SMA 200')}</Field>
       <Field label="Levels">{t('pdHL', 'Prior-day high / low / close (PDH / PDL / PDC)')}{t('pmHL', 'Premarket high / low (PMH / PML)')}</Field>
       <Field label="New charts on this screen"><button className="btn sm" disabled={isSaved} onClick={() => saveChartDefaults(o)}>{isSaved ? 'Saved as defaults' : 'Save these indicators as defaults'}</button></Field>
