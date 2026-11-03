@@ -215,6 +215,13 @@ There is no login: never publish the port to the internet.
 docker compose up -d --build
 ```
 
+A scanner left running rolls its daily context forward by itself: prior close, high, low and open,
+ADV, ATR, SMAs, relative strength, the 60-day levels and the RVOL profile. Every day at
+`DAILY_REFRESH_ET` (03:30 New York time by default, before the 04:00 pre-market) it downloads the
+new day of history, the same way startup does, and swaps the new values in between two bars. If it
+missed that time, the first bar of the new date starts the refresh. `DAILY_REFRESH_ET=off` turns it
+off. The code is in `scanner/daily_refresh.py`. The universe itself is still built only at startup.
+
 **Sharing another app's Schwab login.** Schwab keeps one valid sign-in per app, so two programs on
 the same app key sign each other out. When another app on the server already signs in with your
 Schwab app and keeps its login in a schwab-py token file (Fernet-encrypted), set
