@@ -37,7 +37,7 @@ Other scripts: `npm run lint` (ESLint), `npm run preview` (serve the built bundl
 | Window | Data | Notes |
 |---|---|---|
 | Scanner | unified alert feed `ws://<host>:7777/ws/alerts` | per-window source, setup, direction, score and symbol filters; column picker; resizable columns; row tint; sound and text-to-speech |
-| Chart | `/api/bars` | intraday and daily timeframes, extended hours, VWAP, EMAs, daily SMAs, prior-day and premarket levels |
+| Chart | `/api/bars` | intraday and daily timeframes, extended hours, VWAP and premarket VWAP (`src/lib/pmVwap.ts`), EMAs, daily SMAs, prior-day and premarket levels |
 | Rankings | `/api/v2/toplists`, `/api/premarket`, `/api/v2/events` | RVOL leaders, gainers and losers, 5-min movers, premarket lists, new HOD / LOD stream |
 | News | `/api/v2/news` | market-wide or following the linked symbol |
 | Stock Info | `/api/v2/state`, `/api/v2/fundamentals` | live per-symbol state plus fundamentals |
