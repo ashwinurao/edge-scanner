@@ -227,6 +227,13 @@ In Schwab mode the scanner also opens a Schwab streamer. Schwab is understood to
 per user (not tested with this scanner), so do not run it beside another app that holds a Schwab
 stream on the same account until that is checked.
 
+**Sharing Alpaca keys with another app.** Alpaca allows one market-data websocket per account. When
+another app already streams on the same keys, set `ALPACA_STREAM=0`: the scanner then never opens a
+websocket and asks Alpaca's REST bars endpoint every 5 seconds for the last few minutes of 1-minute
+bars, 1,000 symbols per request. These are Alpaca's own bars, handed on 3 seconds after each minute
+closes, so alerts come a few seconds later than on the stream. The code is in
+`scanner/data/alpaca_poll.py`.
+
 ## Development
 
 ```bash

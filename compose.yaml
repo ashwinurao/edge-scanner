@@ -1,5 +1,6 @@
 # Edge Scanner on a home server. Settings come from .env next to this file (never committed):
 #   DATA_PROVIDER and that provider's keys    as in .env.example
+#   ALPACA_STREAM=0                           when another app holds the Alpaca keys' one websocket
 #   LAN_IP                                    the server's LAN address; the port is published there only
 #   SCANNER_PORT                              the port on that address (default 8772)
 #   SCANNER_ALLOWED_HOSTS                     the names you open it by, e.g. 192.168.1.10
