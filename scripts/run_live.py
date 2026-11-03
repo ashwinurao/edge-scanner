@@ -685,6 +685,9 @@ def main() -> None:
 
     scanner._on_bar = _on_bar_diag
 
+    from scanner import daily_restart
+    daily_restart.start(os.environ.get("DAILY_RESTART_ET"))   # server mode only; see the module
+
     try:
         scanner.connect()
     except (KeyboardInterrupt, TimeoutError):

@@ -20,6 +20,8 @@ services:
     env_file: .env
     environment:
       TZ: ${TZ:-America/New_York}
+      # Stop once a day; `restart` below starts it again with fresh prior closes (scanner/daily_restart.py).
+      DAILY_RESTART_ET: ${DAILY_RESTART_ET:-03:40}
     ports:
       - "${LAN_IP:?set LAN_IP in .env}:${SCANNER_PORT:-8772}:7777"
     volumes:

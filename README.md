@@ -211,6 +211,12 @@ to `compose.yaml`; the comments at the top of `compose.yaml` list the server-onl
 published on `LAN_IP` only (8772 by default), and `SCANNER_ALLOWED_HOSTS` must list that address.
 There is no login: never publish the port to the internet.
 
+Prior closes, levels and the volume profile load only at startup, so the scanner must start fresh
+each session. In Docker it stops itself every day at `DAILY_RESTART_ET` (03:40 New York time by
+default, set in `compose.yaml`) and the restart policy starts it again, ready before the 04:00
+pre-market. Without it, a scanner left running overnight measures pre-market change against an old
+close. The code is in `scanner/daily_restart.py`.
+
 ```bash
 docker compose up -d --build
 ```
