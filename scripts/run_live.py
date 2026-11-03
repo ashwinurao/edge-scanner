@@ -674,16 +674,31 @@ def main() -> None:
     _orig_on_bar = scanner._on_bar
     _hodlod_hook = make_hodlod_hook(scanner, event_buffer)   # Dashboard V2; never raises
 
+    # Daily context rolls forward in-process before each session (scanner/daily_refresh.py).
+    # The bar lock lets the refresh swap new values in between two bars.
+    from scanner import daily_refresh
+    _bar_lock = threading.Lock()
+
+    def _fetch_history_again():
+        spy_d, sym_d, sec_d = _fetch_daily_history(feed, symbols, sector_etfs, args.history_days)
+        return spy_d, sym_d, sec_d, _fetch_intraday_history(feed, symbols, args.intraday_days)
+
+    refresher = daily_refresh.DailyRefresher(
+        scanner, _fetch_history_again, _bar_lock, daily_refresh.parse_hhmm(os.environ.get("DAILY_REFRESH_ET")))
+
     def _on_bar_diag(bar: dict) -> None:
         _bar_count[0] += 1
         n = _bar_count[0]
         if n in (1, 50, 200) or n % 500 == 0:
             regime = scanner._regime.value.upper()
             print(f"  [heartbeat] bars={n:,}  regime={regime}  alerts={app_state.hub.published}", flush=True)
-        _orig_on_bar(bar)
-        _hodlod_hook(bar)
+        refresher.note_bar(bar)
+        with _bar_lock:
+            _orig_on_bar(bar)
+            _hodlod_hook(bar)
 
     scanner._on_bar = _on_bar_diag
+    refresher.start()
 
     try:
         scanner.connect()
