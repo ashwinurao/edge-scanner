@@ -1,0 +1,26 @@
+# Edge Scanner on a home server. Settings come from .env next to this file (never committed):
+#   DATA_PROVIDER and that provider's keys    as in .env.example
+#   LAN_IP                                    the server's LAN address; the port is published there only
+#   SCANNER_PORT                              the port on that address (default 8772)
+#   SCANNER_ALLOWED_HOSTS                     the names you open it by, e.g. 192.168.1.10
+#   EDGE_SCANNER_DATA                         folder for the scanner's data (setups, caches, alerts, tokens)
+# Shared Schwab login (optional, when another app on the server already signs in with the same Schwab app):
+#   SHARED_SCHWAB_DIR                         folder holding the other app's token file (mounted read-only)
+#   SCHWAB_SHARED_TOKEN_FILE                  the file inside the container, e.g. /shared-schwab/token.fernet
+#   SCHWAB_SHARED_TOKEN_KEY                   its Fernet key
+#   SCHWAB_SHARED_APP_NAME                    that app's name, for "sign in again in ..." messages
+# There is no login page: never publish this port to the internet.
+services:
+  edge-scanner:
+    build: .
+    image: edge-scanner:local
+    container_name: edge-scanner
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: ${TZ:-America/New_York}
+    ports:
+      - "${LAN_IP:?set LAN_IP in .env}:${SCANNER_PORT:-8772}:7777"
+    volumes:
+      - ${EDGE_SCANNER_DATA:-./data}:/app/data
+      - ${SHARED_SCHWAB_DIR:-./shared-schwab-unused}:/shared-schwab:ro
