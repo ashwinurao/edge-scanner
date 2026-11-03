@@ -56,6 +56,11 @@ def main() -> None:
                          "new endpoints (the old token carries the old scopes).")
     args = ap.parse_args()
 
+    from scanner.data.shared_login import signin_refusal
+    refusal = signin_refusal()
+    if refusal:
+        sys.exit(refusal)
+
     key    = os.environ.get("SCHWAB_APP_KEY")
     secret = os.environ.get("SCHWAB_APP_SECRET")
     cb     = os.environ.get("SCHWAB_CALLBACK_URL", "https://127.0.0.1")

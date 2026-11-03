@@ -203,6 +203,30 @@ exists. To be told by GitHub instead, use **Watch, then Custom, then Releases** 
 | `dashboard-v2/` | the React dashboard |
 | `data/` | runtime data: caches, settings, your setups, alert archives (gitignored) |
 
+## Running on a home server
+
+`Dockerfile` and `compose.yaml` run the scanner in Docker on a server on your LAN, for example
+Unraid. The image builds the dashboard and starts `start_scanner.sh`. Settings come from `.env` next
+to `compose.yaml`; the comments at the top of `compose.yaml` list the server-only keys. The port is
+published on `LAN_IP` only (8772 by default), and `SCANNER_ALLOWED_HOSTS` must list that address.
+There is no login: never publish the port to the internet.
+
+```bash
+docker compose up -d --build
+```
+
+**Sharing another app's Schwab login.** Schwab keeps one valid sign-in per app, so two programs on
+the same app key sign each other out. When another app on the server already signs in with your
+Schwab app and keeps its login in a schwab-py token file (Fernet-encrypted), set
+`SCHWAB_SHARED_TOKEN_FILE` and `SCHWAB_SHARED_TOKEN_KEY`. The scanner then never signs in itself:
+it reads that file (read-only) every minute and copies a new login into its own `tokens.db`, and
+`scripts/schwab_auth.py` refuses to run. When the login runs out, sign in again in the other app.
+The code is in `scanner/data/shared_login.py`.
+
+In Schwab mode the scanner also opens a Schwab streamer. Schwab is understood to allow one streamer
+per user (not tested with this scanner), so do not run it beside another app that holds a Schwab
+stream on the same account until that is checked.
+
 ## Development
 
 ```bash

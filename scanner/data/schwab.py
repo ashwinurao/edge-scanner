@@ -50,6 +50,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from scanner.cache import parquet
+from scanner.data import shared_login
 from scanner.data.interface import DataFeed, Timeframe
 
 load_dotenv(override=True)
@@ -116,6 +117,8 @@ _LIMITER = _RateLimiter(_MAX_RPM)
 def refresh_token_age_days(db: Path = _TOKENS_DB) -> float | None:
     """Days since Schwab last issued the refresh token, or None if unknown.
     Reads only the timestamp column, never a token."""
+    if db == _TOKENS_DB:
+        shared_login.sync_shared_token()      # does nothing unless SCHWAB_SHARED_TOKEN_FILE is set
     try:
         import sqlite3
         with sqlite3.connect(db) as con:
@@ -321,9 +324,9 @@ class SchwabFeed(DataFeed):
                 # for a browser login, which hangs an unattended start.
                 raise RuntimeError(
                     f"Schwab login expired ({age:.0f} days since the last login; Schwab allows "
-                    f"{_REFRESH_TOKEN_DAYS}). Run: python scripts/schwab_auth.py")
+                    f"{_REFRESH_TOKEN_DAYS}). Next: {shared_login.signin_hint()}")
             if age is not None and age >= _REFRESH_TOKEN_DAYS - 1:
-                log.warning("Schwab login expires within a day; run scripts/schwab_auth.py soon")
+                log.warning("Schwab login expires within a day; %s soon", shared_login.signin_hint())
             import schwabdev
             key    = os.environ.get("SCHWAB_APP_KEY")
             secret = os.environ.get("SCHWAB_APP_SECRET")
@@ -332,11 +335,19 @@ class SchwabFeed(DataFeed):
                     "SCHWAB_APP_KEY / SCHWAB_APP_SECRET missing from .env. "
                     "Register an app at developer.schwab.com, then add them."
                 )
+            extra = {}
+            if shared_login.shared_login():
+                # Signing in here would revoke the other app's login: fail instead of prompting.
+                def _no_signin(*_a, **_k):
+                    raise RuntimeError(f"Schwab needs a new sign-in: {shared_login.signin_hint()}")
+                extra = {"call_on_auth": _no_signin, "open_browser_for_auth": False}
             self._client = schwabdev.Client(
                 app_key=key,
                 app_secret=secret,
                 callback_url=os.environ.get("SCHWAB_CALLBACK_URL", "https://127.0.0.1"),
+                **extra,
             )
+            shared_login.start_sync_thread(threading.Event())   # lives as long as the process
         self._stream = None
         self._stop_evt = threading.Event()
         self.streamed_symbols: list[str] = []      # live 1-min bars (Schwab caps these)
