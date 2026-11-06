@@ -102,6 +102,8 @@ history comparison against a provider that is already supported.
 ## Pull requests
 
 - Branch from `main` and keep the change focused.
+- Fill in every section of the pull request template; write "None" rather than deleting one.
+  Agents also follow [CLAUDE.md](CLAUDE.md).
 - Describe what changed and why, and how you tested it.
 - Say so if the change adds a dependency, a network call, file access outside the app folder, or a
   change to saved-file formats. New dependencies need a reason.
