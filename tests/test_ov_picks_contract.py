@@ -202,7 +202,7 @@ def test_a_refused_record_writes_nothing(tmp_path):
     ({"late": "false"}, "late"),
     ({"shadow": None}, "shadow"),
     # Dates and times: a weekday trading date, a UTC time on that ET date.
-    ({"trading_date": "2026-11-07"}, "weekend"),
+    ({"trading_date": "2026-10-31"}, "weekend"),
     ({"trading_date": "20261105"}, "trading_date"),
     ({"trading_date": "2026-11-5"}, "trading_date"),
     ({"frozen_at": "2026-11-05T14:25:00"}, "frozen_at"),
@@ -266,7 +266,7 @@ def test_utc_timestamp_turns_an_et_time_into_the_written_form():
     from zoneinfo import ZoneInfo
     et = ZoneInfo("America/New_York")
     assert c.utc_timestamp(datetime(2026, 11, 5, 9, 25, tzinfo=et)) == FROZEN_AT
-    assert c.utc_timestamp(datetime(2027, 3, 15, 9, 25, tzinfo=et)) == "2027-03-15T13:25:00Z"
+    assert c.utc_timestamp(datetime(2026, 3, 9, 9, 25, tzinfo=et)) == "2026-03-09T13:25:00Z"
     with pytest.raises(ValueError):
         c.utc_timestamp(datetime(2026, 11, 5, 9, 25))     # naive: which zone?
 
@@ -481,9 +481,9 @@ def test_each_job_keeps_its_own_last_entry(tmp_path):
                        trading_date=DAY, message="Loading daily bars.")
     c.record_job_state(tmp_path, c.JOB_WARMUP, c.DATA_READY, at="2026-11-05T14:02:00Z",
                        trading_date=DAY)
-    c.record_job_state(tmp_path, c.JOB_SCAN, c.SKIPPED, at="2026-11-26T14:25:00Z",
-                       trading_date="2026-11-26", message="Market closed (Thanksgiving).",
-                       next_at="2026-11-27T14:25:00Z")
+    c.record_job_state(tmp_path, c.JOB_SCAN, c.SKIPPED, at="2025-11-27T14:25:00Z",
+                       trading_date="2025-11-27", message="Market closed (Thanksgiving).",
+                       next_at="2025-11-28T14:25:00Z")
 
     status = c.read_status(tmp_path)
 
@@ -491,7 +491,7 @@ def test_each_job_keeps_its_own_last_entry(tmp_path):
     assert set(status["jobs"]) == {c.JOB_NIGHTLY, c.JOB_WARMUP, c.JOB_SCAN}
     assert status["jobs"][c.JOB_WARMUP] == {"state": c.DATA_READY, "at": "2026-11-05T14:02:00Z",
                                            "trading_date": DAY, "message": "", "next_at": None}
-    assert status["jobs"][c.JOB_SCAN]["next_at"] == "2026-11-27T14:25:00Z"
+    assert status["jobs"][c.JOB_SCAN]["next_at"] == "2025-11-28T14:25:00Z"
     assert set(status) == set(c.STATUS_VIEW_FIELDS)
     assert not [p for p in tmp_path.iterdir() if p.name != c.STATUS_FILE]   # no temp left
 
