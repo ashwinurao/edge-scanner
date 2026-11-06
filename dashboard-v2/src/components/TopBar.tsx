@@ -13,7 +13,7 @@ import { Menu, MenuHead, MenuItem, MenuSep } from './Menu'
 import { SetupsPanel } from './SetupsPanel'
 import { WINDOW_ICONS, WINDOW_TITLES } from '../windows/defaults'
 
-const WINDOW_ORDER: WindowType[] = ['chart', 'scanner', 'toplist', 'news', 'stockinfo', 'setupcheck', 'watchlist', 'clock']
+const WINDOW_ORDER: WindowType[] = ['chart', 'scanner', 'toplist', 'news', 'stockinfo', 'setupcheck', 'watchlist', 'ovpicks', 'clock'] // fork: OV picks card (#20)
 
 function FeedDots() {
   const status = useFeeds(s => s.status)

@@ -27,8 +27,17 @@ The answer always has every key in ROUTE_FIELDS:
   (then a warning says the module's schedule is out of date).
 - day: contract.read_day's view of trading_date, unchanged. Null on a route problem.
 - status: contract.read_status's view, unchanged. Null on a route problem.
+- in_universe: each of the day's picks mapped to whether the scanner scans it (it is
+  in the startup universe, so it has live bars and setups). Null without picks, or when
+  the scanner has no universe to ask (ticket #20). The universe is built once at
+  startup (scripts/run_live.py) and watchlists never add to it, so a pick outside it gets no
+  live bars and no setups.
 - warnings: route-level warnings. The day's and the status file's own warnings stay
   inside those views.
+
+register() also starts the day watchlist and the one daily notice
+(scanner/ov_picks_day.py, ticket #20). Those are off unless OV_PICKS_DIR is set when the
+scanner starts.
 """
 from __future__ import annotations
 
@@ -38,11 +47,13 @@ import os
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Container, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+
+from scanner.ov_picks_day import register_morning
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +67,7 @@ ERROR = "ERROR"
 
 ROUTE_FIELDS = ("set_up", "reason_code", "reason", "now_et", "today_et", "trading_date",
                 "is_today", "market_closed", "market_note", "next_scan_at", "next_scan_et",
-                "day", "status", "warnings")
+                "day", "status", "in_universe", "warnings")
 
 _ET = ZoneInfo("America/New_York")
 # Spec "Freeze and restart rules": a first scan may still run until 09:35 ET, ten minutes
@@ -67,11 +78,12 @@ _DAY_NAME = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 def register(app: FastAPI, app_state: Any,
              clock: Optional[Callable[[], datetime]] = None) -> None:
-    """Add GET /api/v2/ov-picks to `app`. `clock` returns an aware datetime (tests pass a fake).
+    """Add GET /api/v2/ov-picks to `app`, and the day watchlist and notice (ticket #20).
 
-    app_state is unused here; ticket #20 hangs the day watchlist and the 09:25 notice off it.
+    `clock` returns an aware datetime (tests and scripts/ov_picks_demo.py pass a fake).
     """
     now = clock or (lambda: datetime.now(_ET))
+    register_morning(app, app_state, clock=clock)
 
     # A plain def: FastAPI runs it in a worker thread, so the file reads never block the
     # event loop that serves /ws/alerts.
@@ -80,7 +92,7 @@ def register(app: FastAPI, app_state: Any,
         at = now()
         setting = os.environ.get(ENV_VAR)
         try:
-            body = build_answer(setting, at)
+            body = build_answer(setting, at, universe=_universe(app_state))
         except Exception as exc:
             # Spec US19: one part failing never takes the scanner down, and the card says why.
             log.exception("ov_picks_route: reading the OV picks folder failed")
@@ -92,8 +104,12 @@ def register(app: FastAPI, app_state: Any,
         return JSONResponse(body)
 
 
-def build_answer(setting: Optional[str], now: datetime) -> dict:
-    """The route's answer for OV_PICKS_DIR=`setting` at time `now`. Reads, never writes."""
+def build_answer(setting: Optional[str], now: datetime,
+                 universe: Optional[Container[str]] = None) -> dict:
+    """The route's answer for OV_PICKS_DIR=`setting` at time `now`. Reads, never writes.
+
+    `universe` holds the symbols the scanner scans, or is None when it can't be read.
+    """
     body = _base(now)
     folder = (setting or "").strip()
     if not folder:
@@ -127,6 +143,7 @@ def build_answer(setting: Optional[str], now: datetime) -> dict:
                 market_closed=closed, market_note=note,
                 next_scan_at=next_at, next_scan_et=next_et,
                 day=contract.read_day(out_dir, served), status=status)
+    body["in_universe"] = _in_universe(body["day"], universe)
     if warning:
         body["warnings"].append(warning)
     return body
@@ -138,6 +155,20 @@ def _base(now: datetime) -> dict:
     body.update(set_up=False, reason_code="", reason="", now_et=now_et.isoformat(timespec="seconds"),
                 today_et=now_et.date().isoformat(), is_today=False, market_note="", warnings=[])
     return body
+
+
+def _universe(app_state: Any) -> Optional[Container[str]]:
+    # LiveScanner._states: one entry per scanned symbol, built at startup
+    # (scanner/live_scanner.py warmup). Empty or missing means "can't tell", never "not
+    # scanned": refuse rather than guess.
+    states = getattr(getattr(app_state, "scanner", None), "_states", None)
+    return states if isinstance(states, dict) and states else None
+
+
+def _in_universe(day: Optional[dict], universe: Optional[Container[str]]) -> Optional[dict]:
+    if universe is None or not day or not day.get("has_picks"):
+        return None
+    return {p["ticker"]: p["ticker"] in universe for p in day["picks"]}
 
 
 def _load_contract():

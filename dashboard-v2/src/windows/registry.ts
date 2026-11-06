@@ -9,6 +9,7 @@ import { StockInfoWindow } from './stockinfo/StockInfoWindow'
 import { WatchlistWindow, WatchlistSettings } from './watchlist/WatchlistWindow'
 import { ClockWindow, ClockSettings } from './clock/ClockWindow'
 import { SetupCheckWindow } from './setupcheck/SetupCheckWindow'
+import { OvPicksWindow } from './ovpicks/OvPicksWindow' // fork: OV picks card (ashwinurao/edge-scanner#20)
 import { SOURCE_SHORT } from '../stores/feedsStore'
 
 export interface Subtitle { text: string; strong?: boolean }
@@ -63,4 +64,5 @@ export const WINDOW_REGISTRY: Record<WindowType, WindowDef> = {
     component: SetupCheckWindow as unknown as WindowDef['component'],
     subtitle: symSub,
   },
+  ovpicks: { component: OvPicksWindow as unknown as WindowDef['component'] }, // fork: OV picks card (#20)
 }
