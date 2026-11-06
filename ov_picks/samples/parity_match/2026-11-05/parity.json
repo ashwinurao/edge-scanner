@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "kind": "ov_picks_parity",
+  "trading_date": "2026-11-05",
+  "compared_at": "2026-11-05T15:35:02Z",
+  "status": "PARITY_MATCH",
+  "first_difference": null
+}
