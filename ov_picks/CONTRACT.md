@@ -52,7 +52,7 @@ allowed), `ticker` is upper-case text with no spaces, at most 16 characters.
 | `late` | true/false | The first scan ran between 09:25 and 09:35 ET (spec US12). |
 | `shadow` | true/false | The shadow run is on: the card says "shadow: checking against OV" (spec US14). |
 | `earnings_status` | text | OV's earnings data status, verbatim: `available`, `unavailable` or `missing_prior_session_context`. |
-| `picks` | list | 0 to 4 picks (`MAX_PICKS`, OV's `MAX_PREMARKET_CANDIDATES`), ranked 1 to n in order, each ticker once. Fewer than 4 when fewer names pass OV's gates. |
+| `picks` | list | 0 to 4 picks (`MAX_PICKS`, the spec's four picks), ranked 1 to n in order, each ticker once. Fewer than 4 when fewer names pass OV's gates. |
 | `reference_state` | text or null | The last reference update before this day: `REF_OK`, `REF_WARN`, or null when none ran (the shadow run keeps the updaters off). |
 | `reference_promoted` | list of tickers | The names the new-listing rule promoted that week, each once. Empty when `reference_state` is null. |
 

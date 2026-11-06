@@ -428,7 +428,7 @@ def _picks_rules(picks: list, earnings_status: Any, earnings_ok: bool) -> list[s
     problems = []
     if len(picks) > MAX_PICKS:
         problems.append(f"picks has {len(picks)} entries; at most {MAX_PICKS} "
-                        "(OV's MAX_PREMARKET_CANDIDATES)")
+                        "(the spec's four picks)")
     ranks = [p[F_RANK] for p in picks]
     if ranks != list(range(1, len(picks) + 1)):
         problems.append(f"picks must be ranked 1 to {len(picks)} in order, not {ranks}")
