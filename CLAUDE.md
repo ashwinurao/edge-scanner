@@ -18,8 +18,11 @@ saved work survives) wins over anything here.
 - OV picks numbers are protected like money logic (Ash, 2026-11-06, for the
   OV picks module): any change to a scoring, gate, universe or
   allocation number of that module needs its own PR with a
-  full 2026 replay of how the picks change, and the owner's go. Vendored OV code
-  is never edited by hand; it changes only through the sync tool. The module,
+  full 2026 replay of how the picks change, and the owner's go. Until the
+  hand-over, vendored OV code is never edited by hand and changes only through
+  the sync tool. The hand-over is the owner's go once the module's picks match
+  OV live; from then on the private repo owns OV's pick logic and changes it
+  there by PR (Ash, 2026-11-06; its docs/changing.md, "The hand-over"). The module,
   its vendored OV code and OV's numbers live in the private repo
   `ashwinurao/ov-picks`, never in this public one (CONTRIBUTING.md, "OV picks").
 - **The contract is shared.** A change to `ov_picks/contract.py`,
