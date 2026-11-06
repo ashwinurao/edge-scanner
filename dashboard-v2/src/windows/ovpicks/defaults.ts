@@ -4,7 +4,8 @@ import type { WindowSize } from '../defaults'
 
 export const OV_PICKS_TITLE = 'OV picks'
 export const OV_PICKS_ICON = '◆'
-export const OV_PICKS_SIZE: WindowSize = { w: 560, h: 380, minW: 380, minH: 200 }
+// Wide enough for a dozen columns; the table scrolls sideways in a smaller window.
+export const OV_PICKS_SIZE: WindowSize = { w: 860, h: 460, minW: 380, minH: 200 }
 /** The watchlist the scanner fills each morning (scanner/ov_picks_day.py WATCHLIST_ID). */
 export const OV_PICKS_WATCHLIST_ID = 'ov-picks'
 /** The card polls the route; the picks file changes once a day. */

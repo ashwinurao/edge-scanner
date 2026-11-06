@@ -6,13 +6,27 @@ import type { WindowBase } from '../../types'
 /** Display-only: no settings, no order buttons. */
 export interface OvPicksConfig extends WindowBase { type: 'ovpicks' }
 
+/** One label and value. The module chooses the labels; the card shows them as written. */
+export interface OvEntry {
+  label: string
+  /** a finite number, text, or null when there is no value */
+  value: number | string | null
+}
+
+/** One row of the day's ranked list (ov_picks/CONTRACT.md, "Each row of picks"). */
 export interface OvPick {
   rank: number
   ticker: string
   score: number
+  /** the module's status text for the row, verbatim */
+  status: string
+  /** one of the day's top picks: they come first, at most 4 */
+  top: boolean
   earnings_label: 'AMC' | 'BMO' | null
-  traded: boolean
-  weight: number
+  /** the table's columns for this row, labelled as `metric_labels` */
+  metrics: OvEntry[]
+  /** the full row, shown when the row is opened */
+  details: OvEntry[]
 }
 
 export interface OvPicksDay {
@@ -31,6 +45,9 @@ export interface OvPicksDay {
   shadow: boolean | null
   /** OV's verbatim status: available | unavailable | missing_prior_session_context */
   earnings_status: string | null
+  /** the table's column labels, in order; every row's metrics have these labels */
+  metric_labels: string[]
+  /** the ranked list, in rank order */
   picks: OvPick[]
   reference_state: string | null
   reference_promoted: string[]
@@ -76,7 +93,7 @@ export interface OvPicksAnswer {
   next_scan_et: string | null
   day: OvPicksDay | null
   status: OvPicksStatus | null
-  /** ticker -> scanned by this scanner; null when there are no picks or it can't tell */
+  /** ticker of each row -> scanned by this scanner; null when there are no picks or it can't tell */
   in_universe: Record<string, boolean> | null
   warnings: string[]
 }
