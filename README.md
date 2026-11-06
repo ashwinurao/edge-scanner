@@ -284,7 +284,7 @@ unset one never breaks a compose command:
 | `OV_PICKS_DATA` | the module's data folder, read-write for the module only |
 | `OV_PICKS_OUT` | the module's output folder. The scanner mounts it read-only at `/ov-picks`, and `OV_PICKS_DIR` points there only when this key is set |
 | `OV_MARKET_DIR`, `OV_OUTPUTS_DIR` | OpenVector's market and outputs folders, mounted read-only into the module for its shadow run |
-| `SEC_USER_AGENT` | the SEC contact the module sends |
+| `SEC_USER_AGENT` | the SEC contact the module sends: a name and a contact email. Without one the module sends no SEC request |
 | `OV_PICKS_CPUS`, `OV_PICKS_MEMORY` | the module's limits (default 2 CPUs and 4g; not measured yet) |
 | `OV_PICKS_GO_LIVE`, `OV_PICKS_NEW_LISTINGS` | the module's two switches, both `0` (off) by default: go-live ends the shadow run, and the weekly new-listing rule changes the universe. Turning either on is the owner's call; the module's docs say when |
 
@@ -298,8 +298,9 @@ docker compose --profile ov-picks up -d --build ov-picks
 ```
 
 The module starts in its shadow run next to OpenVector, and the window says "shadow: checking
-against OV". It stays there until `OV_PICKS_GO_LIVE=1`. The module's own docs, in its repo,
-cover its schedule, its states, going live and its pinned tests.
+against OV". It stays there until `OV_PICKS_GO_LIVE=1` and the module's own go-live gate is
+met: 5 qualifying shadow days since the last unexplained difference (spec US55, US56). The
+module's own docs, in its repo, cover its schedule, its states, going live and its pinned tests.
 
 ## Development
 
