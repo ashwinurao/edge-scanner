@@ -241,6 +241,24 @@ bars, 1,000 symbols per request. These are Alpaca's own bars, handed on 3 second
 closes, so alerts come a few seconds later than on the stream. The code is in
 `scanner/data/alpaca_poll.py`.
 
+**OV picks.** When `OV_PICKS_DIR` names the OV picks module's output folder (mounted read-only),
+the scanner shows that module's four 09:25 ET picks. It never writes that folder.
+
+- The **OV picks** window (Add window menu) shows the day's picks in rank order with score, earnings
+  label, traded flag and weight, plus the warmup, LATE, settled and shadow flags, the check against
+  OV, and when the market is closed, the next scan. It is display only: it places no orders. It reads
+  `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).
+- A pick outside the scanner's universe gets no live bars and no setups. The universe is built at
+  startup and a watchlist does not add to it, so the window marks that name "no setups".
+- Each trading morning, when the picks freeze, the scanner fills a watchlist called "OV picks"
+  (id `ov-picks`) with the day's names and sends one "OV picks ready: A, B, C, D" notice on the alert
+  feed. It shows in Scanner windows set to all setups. The marker `data/ov_picks/notified.json` keeps
+  a restart from sending it twice. A scanner that first sees the picks after 16:00 ET fills the
+  watchlist but sends no notice. The code is in `scanner/ov_picks_day.py`.
+- Without `OV_PICKS_DIR` (when the scanner starts) none of this runs, and the window says so.
+  `python scripts/ov_picks_demo.py --sample frozen` shows the window on a sample day, on
+  127.0.0.1:7787, without keys or market data.
+
 ## Development
 
 ```bash

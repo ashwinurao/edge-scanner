@@ -235,6 +235,7 @@ while dragging to turn off snapping.
 | **Watchlist** | Editable symbol lists with live columns |
 | **Clock** | Eastern time, session phase, market regime, SPY and feed health |
 | **Setup check** | For one symbol, what every setup did over the last few minutes and which condition passed or failed. Use it to answer "why did (or didn't) this alert fire?" |
+| **OV picks** | The OV picks module's four 09:25 ET picks, when `OV_PICKS_DIR` is set: rank, score, earnings label, traded flag and weight, the day's flags, and why there are no picks yet. Display only. See [README: Running on a home server](README.md#running-on-a-home-server) |
 
 ### Linking windows
 
@@ -454,6 +455,7 @@ Everything the scanner writes lives under `data/` (gitignored).
 | `data/universe/profiles/` | Universe filters |
 | `data/layouts/` | Dashboard screens |
 | `data/watchlists.json` | Watchlists |
+| `data/ov_picks/notified.json` | The last day the "OV picks ready" notice went out (only with `OV_PICKS_DIR`) |
 
 Alert files older than 5 days are deleted at startup (change with `--keep-days`). Copy them elsewhere if
 you want a longer history.
@@ -485,6 +487,11 @@ The scanner serves everything on port **7777**:
   match your filter (newest first), then one `{"type": "alert", "alert": {...}}` frame per new alert.
 
 Custom setup ids are stable: renaming a setup in the dashboard changes only its display name.
+
+With `OV_PICKS_DIR` set, the feed also carries one notice a day that is not a setup alert: `notice`
+is `"ov_picks"`, `source` is `custom`, `setup` is `ov_picks`, `direction` is `neutral`, `score` is 0,
+`price` is null, and `setup_label` reads "OV picks ready: A, B, C, D". Skip records with a `notice`
+field if you only want setup alerts.
 
 ---
 

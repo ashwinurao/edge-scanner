@@ -436,3 +436,49 @@ def test_the_answer_is_plain_json(monkeypatch):
     body = _get(monkeypatch, SAMPLES / "frozen", "2026-11-05 10:40")
     # allow_nan=False: the dashboard's JSON.parse refuses NaN and Infinity.
     json.dumps(body, allow_nan=False)
+
+
+# ---------------------------------------------------------------- names the scanner does not scan
+
+def _get_with_universe(monkeypatch, out_dir, now, states):
+    """Like _get, with a scanner whose universe (LiveScanner._states) is `states`."""
+    monkeypatch.setenv(route.ENV_VAR, str(out_dir))
+    app = FastAPI()
+    app_state = SimpleNamespace(scanner=SimpleNamespace(_states=states))
+    route.register(app, app_state, clock=lambda: _et(now))
+    body = TestClient(app).get(URL).json()
+    assert set(body) == set(route.ROUTE_FIELDS)
+    return body
+
+
+def test_a_pick_outside_the_scanner_universe_is_marked(monkeypatch):
+    # ticket #20: the universe is built once at startup and watchlists never add to it, so
+    # DDDD gets no live bars and no setups. The card says so for that name only.
+    states = {s: object() for s in ("AAAA", "BBBB", "CCCC", "SPYX")}
+    body = _get_with_universe(monkeypatch, SAMPLES / "frozen", "2026-11-05 09:30", states)
+    assert body["in_universe"] == {"AAAA": True, "BBBB": True, "CCCC": True, "DDDD": False}
+    assert body["day"] == c.read_day(SAMPLES / "frozen", DAY)      # the day view stays unchanged
+
+
+def test_picks_all_in_the_universe_are_all_marked_scanned(monkeypatch):
+    states = {s: object() for s in ("AAAA", "BBBB", "CCCC", "DDDD")}
+    body = _get_with_universe(monkeypatch, SAMPLES / "frozen", "2026-11-05 09:30", states)
+    assert body["in_universe"] == dict.fromkeys(["AAAA", "BBBB", "CCCC", "DDDD"], True)
+
+
+@pytest.mark.parametrize("states", [{}, None, "not a dict"])
+def test_a_scanner_with_no_universe_to_ask_never_marks_a_name_unscanned(monkeypatch, states):
+    # Empty or missing is "can't tell", never "not scanned".
+    body = _get_with_universe(monkeypatch, SAMPLES / "frozen", "2026-11-05 09:30", states)
+    assert body["in_universe"] is None
+    assert body["day"]["has_picks"] is True
+
+
+def test_no_universe_answer_without_picks(monkeypatch):
+    body = _get_with_universe(monkeypatch, SAMPLES / "warming", "2026-11-05 08:50", {"AAAA": object()})
+    assert body["day"]["has_picks"] is False and body["in_universe"] is None
+
+
+def test_no_universe_answer_when_not_set_up(monkeypatch):
+    body = _get(monkeypatch, None, "2026-11-05 09:30")
+    assert body["reason_code"] == route.NOT_SET_UP and body["in_universe"] is None
