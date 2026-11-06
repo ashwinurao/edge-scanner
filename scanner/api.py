@@ -402,6 +402,7 @@ def create_app(app_state: AppState) -> FastAPI:
     from scanner.api_v2 import register_v2_routes, mount_v2_static
     register_v2_routes(app, app_state)
     mount_v2_static(app)
+    __import__("scanner.ov_picks_route", fromlist=["register"]).register(app, app_state)  # fork: /api/v2/ov-picks (#12)
 
     @app.get("/", include_in_schema=False)
     async def _root() -> RedirectResponse:
