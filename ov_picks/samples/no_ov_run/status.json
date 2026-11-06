@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "kind": "ov_picks_status",
+  "jobs": {
+    "nightly": {
+      "state": "NIGHTLY_OK",
+      "at": "2026-11-05T08:30:41Z",
+      "trading_date": "2026-11-05",
+      "message": "Final daily bar for 2026-11-04 checked and written; hashes match the pins.",
+      "next_at": "2026-11-06T08:30:00Z"
+    },
+    "warmup": {
+      "state": "READY",
+      "at": "2026-11-05T14:20:00Z",
+      "trading_date": "2026-11-05",
+      "message": "",
+      "next_at": null
+    },
+    "scan": {
+      "state": "PICKS_FROZEN",
+      "at": "2026-11-05T14:25:00Z",
+      "trading_date": "2026-11-05",
+      "message": "",
+      "next_at": "2026-11-06T14:25:00Z"
+    },
+    "settle": {
+      "state": "SETTLED_SAME",
+      "at": "2026-11-05T14:26:04Z",
+      "trading_date": "2026-11-05",
+      "message": "",
+      "next_at": null
+    },
+    "compare": {
+      "state": "PARITY_NO_OV_RUN",
+      "at": "2026-11-05T15:35:02Z",
+      "trading_date": "2026-11-05",
+      "message": "No OV live result for 2026-11-05, so there is nothing to compare.",
+      "next_at": null
+    },
+    "archive": {
+      "state": "ARCHIVED",
+      "at": "2026-11-04T21:19:30Z",
+      "trading_date": "2026-11-04",
+      "message": "Scan history v3 appended; pool and ETF minute bars saved.",
+      "next_at": "2026-11-05T21:15:00Z"
+    },
+    "reference": {
+      "state": "REF_OK",
+      "at": "2026-10-31T14:06:12Z",
+      "trading_date": null,
+      "message": "SEC and Yahoo sectors updated.",
+      "next_at": "2026-11-07T15:00:00Z"
+    }
+  }
+}

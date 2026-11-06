@@ -31,5 +31,6 @@ dashboard-v2/dist/
 *.db-wal
 *.db-shm
 
-# Docker: compose's placeholder mount when no shared Schwab login is set
+# Docker: compose's placeholder mounts when no shared Schwab login or OV picks module is set
 /shared-schwab-unused/
+/ov-picks-unused/

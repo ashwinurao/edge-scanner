@@ -1,0 +1,56 @@
+/* fork: OV picks card (ashwinurao/edge-scanner#20). Tokens only: index.css is the one
+   file that holds color literals. */
+.ovp-wrap { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.ovp-top { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border-soft); flex: none; }
+.ovp-day { font-weight: 600; font-size: 12px; color: var(--text); }
+.ovp-frozen { font-size: 11px; }
+.ovp-scroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 0 8px; }
+.ovp-title { padding: 10px 10px 4px; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
+
+.ovp-count { font-size: 11px; }
+
+/* The ranked list. Cells carry an opaque background so the sticky ticker column covers
+   what scrolls under it. */
+.ovp-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.ovp-table th { position: sticky; top: -4px; z-index: 2; text-align: left; padding: 4px 8px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); background: var(--panel); border-bottom: 1px solid var(--border-soft); white-space: nowrap; }
+.ovp-table td { padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border-soft); white-space: nowrap; }
+.ovp-table .num { text-align: right; }
+.ovp-table .ovp-tk { position: sticky; left: 0; z-index: 1; }
+.ovp-table th.ovp-tk { z-index: 3; }
+.ovp-row { cursor: pointer; }
+.ovp-row:hover td { background: var(--row-hover); }
+.ovp-row:focus-visible { outline: none; }
+.ovp-row:focus-visible td { background: var(--row-hover); }
+.ovp-row:focus-visible td:first-child { box-shadow: inset 2px 0 0 var(--text-dim); }
+/* OV's top picks: a tint and an accent bar, plus the "top" badge for a reader without color. */
+.ovp-toprow td { background: color-mix(in oklab, var(--accent) 10%, var(--panel)); }
+.ovp-toprow:hover td { background: color-mix(in oklab, var(--accent) 16%, var(--panel)); }
+.ovp-toprow td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.ovp-split td { border-bottom: 1px solid color-mix(in oklab, var(--accent) 45%, var(--border)); }
+.ovp-open td { background: var(--row-sel); }
+.ovp-chev { display: inline-block; width: 12px; color: var(--text-faint); font-size: 10px; }
+.ovp-sym { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: var(--text); font-weight: 700; font-family: var(--font-mono); }
+.ovp-sym:hover { color: var(--accent); }
+.ovp-tag { margin-left: 6px; }
+
+/* A row's full details, under the row. */
+.ovp-details-row td { background: var(--panel-2); white-space: normal; padding: 6px 10px 10px; }
+.ovp-details-head { font-size: 11.5px; color: var(--text-dim); margin-bottom: 6px; }
+.ovp-details-none { font-size: 11.5px; }
+.ovp-dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 14px; margin: 0; }
+.ovp-dl-item { display: flex; justify-content: space-between; gap: 8px; min-width: 0; padding: 2px 0; border-bottom: 1px dotted var(--border-soft); font-size: 11.5px; }
+/* The label keeps its width (up to half the cell); a long value wraps instead. */
+.ovp-dl dt { flex: 0 0 auto; max-width: 50%; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ovp-dl dd { flex: 1 1 auto; min-width: 0; margin: 0; color: var(--text); text-align: right; overflow-wrap: anywhere; }
+
+.ovp-note { margin: 4px 8px; padding: 4px 8px; border-radius: 4px; font-size: 11.5px; line-height: 1.45; border-left: 2px solid var(--border); color: var(--text-dim); }
+.ovp-note.ovp-ok { border-left-color: var(--up); }
+.ovp-note.ovp-info { border-left-color: var(--accent); }
+.ovp-note.ovp-warn { border-left-color: var(--warn); color: var(--warn); background: color-mix(in oklab, var(--warn) 10%, transparent); }
+.ovp-note.ovp-bad { border-left-color: var(--down); color: var(--down-text); background: var(--down-soft); }
+.ovp-foot { margin: 8px 10px 0; font-size: 10.5px; line-height: 1.4; }
+
+.badge.ovp-b-ok { color: var(--up-text); background: var(--up-soft); }
+.badge.ovp-b-info { color: var(--accent); background: color-mix(in oklab, var(--accent) 16%, transparent); }
+.badge.ovp-b-warn { color: var(--warn); background: color-mix(in oklab, var(--warn) 14%, transparent); }
+.badge.ovp-b-bad { color: var(--down-text); background: var(--down-soft); }

@@ -10,6 +10,14 @@
 #   SCHWAB_SHARED_TOKEN_FILE                  the file inside the container, e.g. /shared-schwab/token.fernet
 #   SCHWAB_SHARED_TOKEN_KEY                   its Fernet key
 #   SCHWAB_SHARED_APP_NAME                    that app's name, for "sign in again in ..." messages
+# OV picks module (optional; see "OV picks" in the README). Every one has a placeholder default:
+#   COMPOSE_PROFILES=ov-picks                 turns the ov-picks service on (off by default)
+#   OV_PICKS_SRC                              local clone of the module's repo, the image's build context
+#   OV_PICKS_DATA                             the module's data folder (read-write for the module only)
+#   OV_PICKS_OUT                              the module's output folder; set it to show the picks here
+#   OV_MARKET_DIR, OV_OUTPUTS_DIR             OV's market and outputs folders, read-only, for the shadow run
+#   SEC_USER_AGENT                            the SEC contact the module sends
+#   OV_PICKS_CPUS, OV_PICKS_MEMORY            the module's CPU and memory limits
 # There is no login page: never publish this port to the internet.
 services:
   edge-scanner:
@@ -20,8 +28,45 @@ services:
     env_file: .env
     environment:
       TZ: ${TZ:-America/New_York}
+      # Blank (picks off, as before) until OV_PICKS_OUT is set.
+      OV_PICKS_DIR: ${OV_PICKS_OUT:+/ov-picks}
     ports:
       - "${LAN_IP:?set LAN_IP in .env}:${SCANNER_PORT:-8772}:7777"
     volumes:
       - ${EDGE_SCANNER_DATA:-./data}:/app/data
       - ${SHARED_SCHWAB_DIR:-./shared-schwab-unused}:/shared-schwab:ro
+      # The module's picks files, read-only: the scanner never writes them.
+      - ${OV_PICKS_OUT:-./ov-picks-unused/out}:/ov-picks:ro
+
+  # The OV picks module: OV's 09:25 ET pre-market picks, written to files the scanner reads.
+  # Behind a profile, so the scanner's own `docker compose up -d --build` never needs the
+  # module's repo. No port and no websocket; it talks to the scanner through files only.
+  ov-picks:
+    profiles: ["ov-picks"]
+    build:
+      context: ${OV_PICKS_SRC:-../ov-picks}
+      target: runtime
+    image: ov-picks:local
+    container_name: ov-picks
+    restart: unless-stopped
+    # The module runs each job in its own process; init reaps them and passes on stop signals.
+    init: true
+    # Not measured yet: change them in .env after the first mornings (spec US39).
+    cpus: ${OV_PICKS_CPUS:-2}
+    mem_limit: ${OV_PICKS_MEMORY:-4g}
+    environment:
+      # The same Alpaca keys as the scanner, under the names the module reads.
+      # No env_file: no other key in .env reaches the module.
+      ALPACA_DATA_API_KEY: ${ALPACA_API_KEY:-}
+      ALPACA_DATA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
+      SEC_USER_AGENT: ${SEC_USER_AGENT:-}
+      # The module's two switches, both off by default: go-live (off = the shadow run next
+      # to OV) and the weekly new-listing rule. Turning either on is the owner's call.
+      OV_PICKS_GO_LIVE: ${OV_PICKS_GO_LIVE:-0}
+      OV_PICKS_NEW_LISTINGS: ${OV_PICKS_NEW_LISTINGS:-0}
+    volumes:
+      - ${OV_PICKS_DATA:-./ov-picks-unused/data}:/data
+      - ${OV_PICKS_OUT:-./ov-picks-unused/out}:/out
+      # OV's own folders, read-only, for the shadow run's archive, compare and parity jobs.
+      - ${OV_MARKET_DIR:-./ov-picks-unused/ov-market}:/ov/market:ro
+      - ${OV_OUTPUTS_DIR:-./ov-picks-unused/ov-outputs}:/ov/outputs:ro

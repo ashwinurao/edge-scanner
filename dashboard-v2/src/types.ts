@@ -1,3 +1,4 @@
+import type { OvPicksConfig } from './windows/ovpicks/types' // fork: OV picks card (ashwinurao/edge-scanner#20)
 // ── Alert payloads (unchanged wire format from the scanner) ──────────────────
 
 export interface Alert {
@@ -55,7 +56,7 @@ export type SortDir = 'asc' | 'desc'
 export type LinkColor = 'none' | 'red' | 'green' | 'blue' | 'yellow' | 'purple'
 export const LINK_COLORS: Exclude<LinkColor, 'none'>[] = ['red', 'green', 'blue', 'yellow', 'purple']
 
-export type WindowType = 'scanner' | 'chart' | 'toplist' | 'news' | 'stockinfo' | 'watchlist' | 'clock' | 'setupcheck'
+export type WindowType = 'scanner' | 'chart' | 'toplist' | 'news' | 'stockinfo' | 'watchlist' | 'clock' | 'setupcheck' | 'ovpicks' // fork: OV picks card (#20)
 /** alert producers on the unified feed */
 export type FeedId = 'system' | 'custom'
 export type ToneName = 'ping' | 'chime' | 'buzz' | 'off'
@@ -159,7 +160,7 @@ export interface SetupCheckConfig extends WindowBase { type: 'setupcheck'; symbo
 
 export type WindowConfig =
   | ScannerConfig | ChartConfig | ToplistConfig | NewsConfig
-  | StockInfoConfig | WatchlistConfig | ClockConfig | SetupCheckConfig
+  | StockInfoConfig | WatchlistConfig | ClockConfig | SetupCheckConfig | OvPicksConfig // fork: OV picks card (#20)
 
 export interface Screen {
   id: string

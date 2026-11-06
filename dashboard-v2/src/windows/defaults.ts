@@ -1,6 +1,7 @@
 // Per-window-type defaults and grid sizes. Kept free of component imports so
 // stores can use it without creating an import cycle through the registry.
 import type { FeedId, ScannerConfig, ToplistName, WindowConfig, WindowType } from '../types'
+import { OV_PICKS_ICON, OV_PICKS_SIZE, OV_PICKS_TITLE } from './ovpicks/defaults' // fork: OV picks card (ashwinurao/edge-scanner#20)
 
 /** Default window size in CSS pixels (converted to workspace fractions when a window is added). */
 export interface WindowSize { w: number; h: number; minW: number; minH: number; maxH?: number }
@@ -8,10 +9,12 @@ export interface WindowSize { w: number; h: number; minW: number; minH: number; 
 export const WINDOW_TITLES: Record<WindowType, string> = {
   scanner: 'Scanner', chart: 'Chart', toplist: 'Rankings', news: 'News',
   stockinfo: 'Stock Info', watchlist: 'Watchlist', clock: 'Clock', setupcheck: 'Setup check',
+  ovpicks: OV_PICKS_TITLE, // fork: OV picks card (#20)
 }
 
 export const WINDOW_ICONS: Record<WindowType, string> = {
   scanner: '◎', chart: '⌇', toplist: '≡', news: '¶', stockinfo: 'ℹ', watchlist: '☆', clock: '◷', setupcheck: '✓',
+  ovpicks: OV_PICKS_ICON, // fork: OV picks card (#20)
 }
 
 // Pixels. `w: 0` means "full workspace width" (the clock strip).
@@ -24,6 +27,7 @@ export const WINDOW_SIZES: Record<WindowType, WindowSize> = {
   watchlist: { w: 460, h: 340, minW: 300, minH: 150 },
   clock: { w: 0, h: 60, minW: 400, minH: 40 },
   setupcheck: { w: 560, h: 420, minW: 360, minH: 180 },
+  ovpicks: OV_PICKS_SIZE, // fork: OV picks card (#20)
 }
 
 export const SCANNER_DEFAULT_COLUMNS: string[] = ['time', 'symbol', 'dir', 'setup', 'price', 'rvol', 'gap']
@@ -86,14 +90,17 @@ export function windowDefaults(type: WindowType, id: string): WindowConfig {
       return { ...base(id, 'clock'), type: 'clock', showSpy: true }
     case 'setupcheck':
       return { ...base(id, 'setupcheck'), type: 'setupcheck', symbol: null, minutes: 5 }
+    case 'ovpicks': return { ...base(id, 'ovpicks'), type: 'ovpicks' } // fork: OV picks card (#20)
   }
 }
 
 /** Windows that follow a link group / publish symbols. */
 export const USES_LINK: Record<WindowType, boolean> = {
   scanner: true, chart: true, toplist: true, news: true, stockinfo: true, watchlist: true, clock: false, setupcheck: true,
+  ovpicks: true, // fork: OV picks card (#20)
 }
 /** Windows that can make noise. */
 export const USES_SOUND: Record<WindowType, boolean> = {
   scanner: true, chart: false, toplist: true, news: false, stockinfo: false, watchlist: false, clock: false, setupcheck: false,
+  ovpicks: false, // fork: OV picks card (#20)
 }

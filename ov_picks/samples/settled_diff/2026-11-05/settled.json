@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "kind": "ov_picks_settled",
+  "trading_date": "2026-11-05",
+  "checked_at": "2026-11-05T14:26:04Z",
+  "state": "SETTLED_DIFF",
+  "difference": "With the bars that arrived after 09:25, rank 4 would be EEEE, not DDDD. The frozen picks stand."
+}

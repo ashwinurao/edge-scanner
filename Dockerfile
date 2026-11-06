@@ -19,6 +19,9 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY scanner scanner
 COPY scripts scripts
+# The OV picks route reads the module's files through the shared contract alone (ticket #21);
+# the rest of ov_picks/ (samples, schema notes) is for development and stays out.
+COPY ov_picks/__init__.py ov_picks/contract.py ov_picks/
 COPY start_scanner.sh .
 COPY --from=dashboard /build/dist dashboard-v2/dist
 RUN mkdir -p data/home && chown -R 99:100 /app

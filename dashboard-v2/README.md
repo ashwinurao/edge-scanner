@@ -44,6 +44,7 @@ Other scripts: `npm run lint` (ESLint), `npm run preview` (serve the built bundl
 | Watchlist | `/api/v2/watchlists`, `/api/v2/snapshot` | editable lists with live columns |
 | Clock | `/api/v2/clock` | ET clock, session phase, market regime, SPY, feed health |
 | Setup check | `/api/v2/check/{symbol}` | what every setup did on one symbol in the last few minutes, and why |
+| OV picks | `/api/v2/ov-picks`, `/api/v2/watchlists` | fork window (`src/windows/ovpicks/`): the OV picks module's 09:25 ET picks, display only |
 
 ## Alert sources
 
