@@ -16,10 +16,16 @@ saved work survives) wins over anything here.
   address only (never through a tunnel or to the internet). A change to any of
   these needs the owner's explicit go, quoted in the PR (who, when, where).
 - OV picks numbers are protected like money logic (Ash, 2026-11-06, for the
-  planned OV picks module): any change to a scoring, gate, universe or
+  OV picks module): any change to a scoring, gate, universe or
   allocation number of that module needs its own PR with a
   full 2026 replay of how the picks change, and the owner's go. Vendored OV code
-  is never edited by hand; it changes only through the sync tool.
+  is never edited by hand; it changes only through the sync tool. The module,
+  its vendored OV code and OV's numbers live in the private repo
+  `ashwinurao/ov-picks`, never in this public one (CONTRIBUTING.md, "OV picks").
+- **The contract is shared.** A change to `ov_picks/contract.py`,
+  `ov_picks/CONTRACT.md` or `ov_picks/samples/` needs the same change in
+  `ashwinurao/ov-picks` in a paired PR. Both repos pin its hash in
+  `tests/test_ov_picks_contract_pin.py`.
 - Never change an approved test expectation to make a failure go away. If an
   approved rule changed, list each changed expectation and why in the PR.
 - Never put secrets, tokens, account numbers, real positions, `.env` files or

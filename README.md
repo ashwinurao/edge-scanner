@@ -199,6 +199,7 @@ exists. To be told by GitHub instead, use **Watch, then Custom, then Releases** 
 | `scanner/custom_setups_defaults.json` | sample setups, seeded on first run |
 | `scanner/setup_library.json` | the setup library (`scripts/install_setup_library.py`) |
 | `scanner/plugins.py` | extension points for optional engine plugins |
+| `ov_picks/` | the OV picks file contract and sample days; the module itself is in a separate private repo ([OV picks](#ov-picks)) |
 | `scripts/run_live.py` | the live scanner |
 | `dashboard-v2/` | the React dashboard |
 | `data/` | runtime data: caches, settings, your setups, alert archives (gitignored) |
@@ -241,13 +242,23 @@ bars, 1,000 symbols per request. These are Alpaca's own bars, handed on 3 second
 closes, so alerts come a few seconds later than on the stream. The code is in
 `scanner/data/alpaca_poll.py`.
 
-**OV picks.** When `OV_PICKS_DIR` names the OV picks module's output folder (mounted read-only),
-the scanner shows that module's four 09:25 ET picks. It never writes that folder.
+## OV picks
+
+This fork can show the four pre-market picks that a separate module, "OV picks", freezes at
+09:25 ET each trading day. The module's code lives in a separate private repo. This repo holds
+only what reads its files: the shared picks-file contract (`ov_picks/contract.py`,
+`ov_picks/CONTRACT.md`, `ov_picks/samples/`), the route, the window, the watchlist and notice, and
+the module's opt-in compose service. The two repos talk through files only, and a change to the
+contract needs the same change in the module's repo ([CONTRIBUTING.md](CONTRIBUTING.md#ov-picks)).
+
+**In the scanner.** When `OV_PICKS_DIR` names the module's output folder (mounted read-only), the
+scanner shows the day's picks. It never writes that folder.
 
 - The **OV picks** window (Add window menu) shows the day's picks in rank order with score, earnings
   label, traded flag and weight, plus the warmup, LATE, settled and shadow flags, the check against
-  OV, and when the market is closed, the next scan. It is display only: it places no orders. It reads
-  `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).
+  OV, the week's new listings, and when the market is closed, the next scan. It is display only: it
+  places no orders. It reads `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).
+  [USER_GUIDE: The OV picks window](USER_GUIDE.md#the-ov-picks-window) explains every part of it.
 - A pick outside the scanner's universe gets no live bars and no setups. The universe is built at
   startup and a watchlist does not add to it, so the window marks that name "no setups".
 - Each trading morning, when the picks freeze, the scanner fills a watchlist called "OV picks"
@@ -259,12 +270,12 @@ the scanner shows that module's four 09:25 ET picks. It never writes that folder
   `python scripts/ov_picks_demo.py --sample frozen` shows the window on a sample day, on
   127.0.0.1:7787, without keys or market data.
 
-**OV picks module.** The module that writes those files runs as the `ov-picks` service in
-`compose.yaml`. Its code lives in a separate private repo; compose builds its image from a local
-clone of it. The service is off unless `COMPOSE_PROFILES=ov-picks` is in `.env`, so the scanner's
-own `docker compose up -d --build` never needs that clone. It publishes no port and opens no
-websocket, and it has CPU and memory limits. These `.env` keys set it up; each has a placeholder
-default (under `./ov-picks-unused/`), so an unset one never breaks a compose command:
+**The module on a home server.** The module runs as the `ov-picks` service in `compose.yaml`.
+Compose builds its image from a local clone of the private repo. The service is off unless
+`COMPOSE_PROFILES=ov-picks` is in `.env`, so the scanner's own `docker compose up -d --build` never
+needs that clone. It publishes no port and opens no websocket, and it has CPU and memory limits.
+These `.env` keys set it up; each has a placeholder default (under `./ov-picks-unused/`), so an
+unset one never breaks a compose command:
 
 | Key | What |
 |---|---|
@@ -276,14 +287,19 @@ default (under `./ov-picks-unused/`), so an unset one never breaks a compose com
 | `SEC_USER_AGENT` | the SEC contact the module sends |
 | `OV_PICKS_CPUS`, `OV_PICKS_MEMORY` | the module's limits (default 2 CPUs and 4g; not measured yet) |
 
-The module gets the scanner's `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` as its own Alpaca keys,
-and no other key from `.env`. Create its data and output folders before the first start, owned by
-99:100; the module runs as that user. Keep them outside `EDGE_SCANNER_DATA`. The module's README
-says how to build its image and run its pinned tests inside it.
+In its environment the module gets only the scanner's `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`, as
+its own Alpaca keys, and `SEC_USER_AGENT`; no other key from `.env` reaches it
+(`tests/test_ov_picks_compose.py` pins that list). Create its data and output folders before the
+first start, owned by 99:100; the module runs as that user. Keep them outside `EDGE_SCANNER_DATA`.
 
 ```bash
 docker compose --profile ov-picks up -d --build ov-picks
 ```
+
+The module starts in its shadow run next to OpenVector, and the window says "shadow: checking
+against OV". Compose does not pass the module's go-live switch yet, so under this file the module
+stays in its shadow run; going live needs a change to its service here. The module's own docs, in
+its repo, cover its schedule, its states, going live and its pinned tests.
 
 ## Development
 

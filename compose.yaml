@@ -10,7 +10,7 @@
 #   SCHWAB_SHARED_TOKEN_FILE                  the file inside the container, e.g. /shared-schwab/token.fernet
 #   SCHWAB_SHARED_TOKEN_KEY                   its Fernet key
 #   SCHWAB_SHARED_APP_NAME                    that app's name, for "sign in again in ..." messages
-# OV picks module (optional; see "OV picks module" in the README). Every one has a placeholder default:
+# OV picks module (optional; see "OV picks" in the README). Every one has a placeholder default:
 #   COMPOSE_PROFILES=ov-picks                 turns the ov-picks service on (off by default)
 #   OV_PICKS_SRC                              local clone of the module's repo, the image's build context
 #   OV_PICKS_DATA                             the module's data folder (read-write for the module only)
