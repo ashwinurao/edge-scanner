@@ -172,9 +172,9 @@ def _in_universe(day: Optional[dict], universe: Optional[Container[str]]) -> Opt
 
 
 def _load_contract():
-    # Imported on each request, not at import time: the scanner image copies only scanner/
-    # and scripts/ (Dockerfile), so ov_picks/ may be missing, and that must never stop
-    # create_app. A failed import is not cached, so installing the folder needs no new code.
+    # Imported on each request, not at import time: an install without ov_picks/contract.py
+    # (the Docker image copies it since ticket #21) must never stop create_app. A failed
+    # import is not cached, so installing the folder needs no new code.
     try:
         return importlib.import_module("ov_picks.contract")
     except ImportError:

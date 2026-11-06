@@ -259,6 +259,32 @@ the scanner shows that module's four 09:25 ET picks. It never writes that folder
   `python scripts/ov_picks_demo.py --sample frozen` shows the window on a sample day, on
   127.0.0.1:7787, without keys or market data.
 
+**OV picks module.** The module that writes those files runs as the `ov-picks` service in
+`compose.yaml`. Its code lives in a separate private repo; compose builds its image from a local
+clone of it. The service is off unless `COMPOSE_PROFILES=ov-picks` is in `.env`, so the scanner's
+own `docker compose up -d --build` never needs that clone. It publishes no port and opens no
+websocket, and it has CPU and memory limits. These `.env` keys set it up; each has a placeholder
+default (under `./ov-picks-unused/`), so an unset one never breaks a compose command:
+
+| Key | What |
+|---|---|
+| `COMPOSE_PROFILES=ov-picks` | turns the service on |
+| `OV_PICKS_SRC` | the local clone of the module's repo (default `../ov-picks`) |
+| `OV_PICKS_DATA` | the module's data folder, read-write for the module only |
+| `OV_PICKS_OUT` | the module's output folder. The scanner mounts it read-only at `/ov-picks`, and `OV_PICKS_DIR` points there only when this key is set |
+| `OV_MARKET_DIR`, `OV_OUTPUTS_DIR` | OpenVector's market and outputs folders, mounted read-only into the module for its shadow run |
+| `SEC_USER_AGENT` | the SEC contact the module sends |
+| `OV_PICKS_CPUS`, `OV_PICKS_MEMORY` | the module's limits (default 2 CPUs and 4g; not measured yet) |
+
+The module gets the scanner's `ALPACA_API_KEY` and `ALPACA_SECRET_KEY` as its own Alpaca keys,
+and no other key from `.env`. Create its data and output folders before the first start, owned by
+99:100; the module runs as that user. Keep them outside `EDGE_SCANNER_DATA`. The module's README
+says how to build its image and run its pinned tests inside it.
+
+```bash
+docker compose --profile ov-picks up -d --build ov-picks
+```
+
 ## Development
 
 ```bash
