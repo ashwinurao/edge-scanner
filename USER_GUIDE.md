@@ -235,7 +235,7 @@ while dragging to turn off snapping.
 | **Watchlist** | Editable symbol lists with live columns |
 | **Clock** | Eastern time, session phase, market regime, SPY and feed health |
 | **Setup check** | For one symbol, what every setup did over the last few minutes and which condition passed or failed. Use it to answer "why did (or didn't) this alert fire?" |
-| **OV picks** | The OV picks module's four 09:25 ET picks, when `OV_PICKS_DIR` is set: rank, score, earnings label, traded flag and weight, the day's flags, and why there are no picks yet. Display only. See [The OV picks window](#the-ov-picks-window) |
+| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, each row's full details on a click, the day's flags, and why there are no picks yet. Display only. See [The OV picks window](#the-ov-picks-window) |
 
 ### Linking windows
 
@@ -281,34 +281,40 @@ unlock the layout, `Ctrl+,` open Config, `Esc` close menus and dialogs.
 
 ### The OV picks window
 
-The **OV picks** window shows the four pre-market picks that the separate OV picks module
-freezes at 09:25 ET each trading day. It needs `OV_PICKS_DIR` set when the scanner starts
-([README: OV picks](README.md#ov-picks)). It is display only: it places no orders. It reads
-`GET /api/v2/ov-picks` every 15 seconds; **Refresh** reads it now. The code is in
-`dashboard-v2/src/windows/ovpicks/`.
+The **OV picks** window shows the pre-market ranked list that the separate OV picks module
+freezes at 09:25 ET each trading day: every name the module ranked, in rank order, with its top
+picks (at most four) first and highlighted. You pick and size from the list by hand. It needs
+`OV_PICKS_DIR` set when the scanner starts ([README: OV picks](README.md#ov-picks)). It is
+display only: it places no orders and sizes nothing. It reads `GET /api/v2/ov-picks` every 15
+seconds; **Refresh** reads it now. The code is in `dashboard-v2/src/windows/ovpicks/`.
 
-**The header** shows the day (for example "Thu 2026-11-05"), when the picks froze ("frozen
-09:25:00 ET"), and these badges:
+**The header** shows the day (for example "Thu 2026-11-05"), when the list froze ("frozen
+09:25:00 ET"), how many names are ranked and how many are top picks, and these badges:
 
 | Badge | Meaning |
 |---|---|
 | **shadow: checking against OV** | The module is in its shadow run: its picks are still being proved against OpenVector's |
 | **LATE** | The first scan ran between 09:25 and 09:35 ET, not on time |
 | **READY** / **NOT READY** | Whether the module's warmup was ready at the 09:20 ET deadline. Not ready still makes picks |
-| **SETTLED SAME** / **SETTLED DIFF** | The 09:26 ET re-check made the same picks, or bars that came in late for 09:24 would have changed them. The frozen picks always stand |
+| **SETTLED SAME** / **SETTLED DIFF** | The 09:26 ET re-check made the same top picks and the same ranked list, or bars that came in late for 09:24 would have changed them. The frozen list always stands |
 
-**The table** has one row per pick, in rank order. Traded rows are marked.
+**The table** has one row per ranked name, in rank order, at most 100. The top picks come first:
+their rows are tinted, have an accent bar and a **top** badge, and a line separates them from the
+rest of the list.
 
-| Column | What |
-|---|---|
-| Rank | 1 to 4 |
-| Ticker | Click it to show the name in the window's linked charts. **no setups** marks a pick outside the scanner's universe: it gets no live bars and no setups, but charts work |
-| Score | The pick's score, two decimals |
-| Earnings | **AMC** (reported after the prior close), **BMO** (reports before this open), a dash for none, or "unavailable" when the module's earnings data is down |
-| Traded | **traded** when the pick is in the module's traded set |
-| Weight | A traded pick's weight, as a percent; a dash when not traded |
+- **Ticker** comes first and stays in view when the table scrolls sideways. Click the ticker to
+  show the name in the window's linked charts. Badges beside it: **top** for a top pick, **AMC**
+  (reported after the prior close) or **BMO** (reports before this open) for an earnings label,
+  and **no setups** for a name outside the scanner's universe (it gets no live bars and no
+  setups, but charts work).
+- **The other columns** are the ones the module sends (`metric_labels` in
+  `ov_picks/CONTRACT.md`), in its order and with its labels. The window adds no column of its
+  own. Numbers are right-aligned: whole numbers with thousands separators, others to two
+  decimals (up to four below 1). A dash means no value.
 
-The traded flag and the weight are information only.
+**Click a row** (or focus it and press Enter) to open its full details under it: every field the
+module wrote for that name, label and value, with numbers as written. Click it again to close
+it. One row is open at a time.
 
 **Notes under the table**, when they apply:
 
@@ -316,15 +322,17 @@ The traded flag and the weight are information only.
   when the next scan runs;
 - LATE, with the time the first scan ran;
 - why the warmup was not ready;
-- the earnings data is unavailable, so there is no traded set and no earnings labels;
-- fewer than four names, or none, passed the module's gates;
-- which picks are outside the scanner's universe;
-- the 09:26 re-check: same picks, what would have changed, or not run yet;
+- the earnings data is unavailable, so no row has an earnings label;
+- no name passed the module's gates (the list is empty), or the module marked fewer than four
+  top picks, or none;
+- which names are outside the scanner's universe (a count when there are more than five);
+- the 09:26 re-check: the same list, what would have changed, or not run yet;
 - the check against OpenVector: "matches OV", "differs from OV" with the first difference, "no OV
   run to compare", or "not run yet. It runs at 10:35 ET";
 - the week's new listings, and a warning from the module's last sector and listing update.
 
-When the day's picks are in the "OV picks" watchlist, the footer says so.
+When the day's top picks are in the "OV picks" watchlist, the footer says so. The watchlist
+holds the top picks only; the rest of the list stays in this window.
 
 **Without picks**, the window says why:
 
