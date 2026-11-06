@@ -72,8 +72,11 @@ def _record(day, frozen_at, **over):
         "late": False,
         "shadow": False,
         "earnings_status": c.EARNINGS_AVAILABLE,
-        "picks": [{"rank": i + 1, "ticker": t, "score": 90.0 - i, "earnings_label": None,
-                   "traded": True, "weight": 0.25} for i, t in enumerate(["AAAA", "BBBB", "CCCC", "DDDD"])],
+        "metric_labels": ["Score"],
+        "picks": [{"rank": i + 1, "ticker": t, "score": 90.0 - i, "status": "PICK", "top": True,
+                   "earnings_label": None, "metrics": [{"label": "Score", "value": 90.0 - i}],
+                   "details": [{"label": "Ticker", "value": t}]}
+                  for i, t in enumerate(["AAAA", "BBBB", "CCCC", "DDDD"])],
         "reference_state": c.REF_OK,
         "reference_promoted": [],
     }
@@ -168,31 +171,34 @@ def test_a_reader_failure_is_a_clear_state_not_a_500(monkeypatch):
 
 # ---------------------------------------------------------------- the ticket #9 samples
 
-# case: (ET clock, has picks, shadow, late, warmup, earnings, traded, settled, parity, next scan)
+TOP = ["AAAA", "BBBB", "CCCC", "DDDD"]
+# case: (ET clock, has picks, shadow, late, warmup, earnings, top picks, rows, settled,
+# parity, next scan). Every sample day's top picks are its first four rows; the rows
+# below them are the rest of the day's ranked list.
 ROUTE_CASES = {
     "frozen": ("2026-11-05 09:25:30", True, False, False, c.READY, c.EARNINGS_AVAILABLE,
-               ["AAAA", "BBBB", "CCCC", "DDDD"], c.PENDING, c.PENDING, NEXT_SCAN),
+               TOP, 10, c.PENDING, c.PENDING, NEXT_SCAN),
     "shadow": ("2026-11-05 09:30", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
-               ["AAAA", "BBBB", "CCCC", "DDDD"], c.SETTLED_SAME, c.PENDING, NEXT_SCAN),
+               TOP, 6, c.SETTLED_SAME, c.PENDING, NEXT_SCAN),
     "late": ("2026-11-05 09:32", True, False, True, c.READY, c.EARNINGS_AVAILABLE,
-             ["AAAA", "BBBB", "CCCC", "DDDD"], c.PENDING, c.PENDING, NEXT_SCAN),
+             TOP, 6, c.PENDING, c.PENDING, NEXT_SCAN),
     "not_ready": ("2026-11-05 09:30", True, False, False, c.NOT_READY, c.EARNINGS_AVAILABLE,
-                  ["AAAA", "BBBB", "CCCC", "DDDD"], c.PENDING, c.PENDING, NEXT_SCAN),
+                  TOP, 6, c.PENDING, c.PENDING, NEXT_SCAN),
     "earnings_unavailable": ("2026-11-05 09:30", True, False, False, c.READY, c.EARNINGS_UNAVAILABLE,
-                             [], c.PENDING, c.PENDING, NEXT_SCAN),
+                             TOP, 6, c.PENDING, c.PENDING, NEXT_SCAN),
     "parity_match": ("2026-11-05 10:40", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
-                     ["BBBB", "CCCC"], c.SETTLED_SAME, c.PARITY_MATCH, NEXT_SCAN),
+                     TOP, 8, c.SETTLED_SAME, c.PARITY_MATCH, NEXT_SCAN),
     "parity_diff": ("2026-11-05 10:40", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
-                    ["AAAA", "BBBB", "CCCC", "DDDD"], c.SETTLED_SAME, c.PARITY_DIFF, NEXT_SCAN),
+                    TOP, 6, c.SETTLED_SAME, c.PARITY_DIFF, NEXT_SCAN),
     "no_ov_run": ("2026-11-05 10:40", True, False, False, c.READY, c.EARNINGS_AVAILABLE,
-                  ["AAAA", "BBBB", "CCCC", "DDDD"], c.SETTLED_SAME, c.PARITY_NO_OV_RUN, NEXT_SCAN),
+                  TOP, 6, c.SETTLED_SAME, c.PARITY_NO_OV_RUN, NEXT_SCAN),
     "settled_diff": ("2026-11-05 09:30", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
-                     ["AAAA", "BBBB", "CCCC", "DDDD"], c.SETTLED_DIFF, c.PENDING, NEXT_SCAN),
+                     TOP, 6, c.SETTLED_DIFF, c.PENDING, NEXT_SCAN),
     # No status file: the next scan is unknown.
     "older_schema": ("2026-11-05 09:30", True, False, False, c.READY, c.EARNINGS_AVAILABLE,
-                     ["AAAA", "BBBB", "CCCC", "DDDD"], c.PENDING, c.PENDING, None),
+                     TOP, 6, c.PENDING, c.PENDING, None),
     # 08:50 ET, warming, no picks file yet: today's scan is still to come.
-    "warming": ("2026-11-05 08:50", False, None, None, None, None, [], None, None,
+    "warming": ("2026-11-05 08:50", False, None, None, None, None, [], 0, None, None,
                 "2026-11-05T14:25:00Z"),
 }
 
@@ -203,7 +209,7 @@ def test_every_sample_folder_has_a_route_case():
 
 @pytest.mark.parametrize("case", sorted(ROUTE_CASES))
 def test_the_route_serves_each_sample_day(monkeypatch, case):
-    now, has, shadow, late, warmup, earnings, traded, settled, parity, next_scan = ROUTE_CASES[case]
+    now, has, shadow, late, warmup, earnings, top, rows, settled, parity, next_scan = ROUTE_CASES[case]
     folder = SAMPLES / case
 
     body = _get(monkeypatch, folder, now)
@@ -223,7 +229,10 @@ def test_the_route_serves_each_sample_day(monkeypatch, case):
         return
     assert (day["shadow"], day["late"], day["warmup_state"]) == (shadow, late, warmup)
     assert day["earnings_status"] == earnings
-    assert [p["ticker"] for p in day["picks"] if p["traded"]] == traded
+    assert [p["ticker"] for p in day["picks"] if p["top"]] == top
+    assert len(day["picks"]) == rows
+    assert [p["rank"] for p in day["picks"]] == list(range(1, rows + 1))
+    assert all([m["label"] for m in p["metrics"]] == day["metric_labels"] for p in day["picks"])
     assert (day["settled_state"], day["parity_status"]) == (settled, parity)
 
 
@@ -232,10 +241,16 @@ def test_not_ready_shows_the_reason(monkeypatch):
     assert day["warmup_state"] == c.NOT_READY and day["warmup_reason"].strip()
 
 
-def test_earnings_unavailable_shows_no_traded_set_and_no_labels(monkeypatch):
+def test_earnings_unavailable_shows_the_ranked_list_with_no_labels(monkeypatch):
     day = _get(monkeypatch, SAMPLES / "earnings_unavailable", "2026-11-05 09:30")["day"]
-    assert len(day["picks"]) == 4
-    assert [(p["traded"], p["weight"], p["earnings_label"]) for p in day["picks"]] == [(False, 0, None)] * 4
+    assert [p["ticker"] for p in day["picks"] if p["top"]] == TOP
+    assert [p["earnings_label"] for p in day["picks"]] == [None] * 6
+
+
+def test_an_earnings_day_shows_its_labels_on_top_picks_and_ranked_rows(monkeypatch):
+    day = _get(monkeypatch, SAMPLES / "parity_match", "2026-11-05 10:40")["day"]
+    labelled = [(p["ticker"], p["top"], p["earnings_label"]) for p in day["picks"] if p["earnings_label"]]
+    assert labelled == [("BBBB", True, "AMC"), ("CCCC", True, "BMO"), ("GGGG", False, "BMO")]
 
 
 @pytest.mark.parametrize("case, status, has_difference", [
@@ -256,7 +271,7 @@ def test_an_older_schema_version_still_serves(monkeypatch):
     day = _get(monkeypatch, SAMPLES / "older_schema", "2026-11-05 09:30")["day"]
     assert day["has_picks"] is True, day["reason"]
     assert day["schema_version"] == 1
-    assert [p["ticker"] for p in day["picks"]] == ["AAAA", "BBBB", "CCCC", "DDDD"]
+    assert [p["ticker"] for p in day["picks"]] == ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF"]
 
 
 def test_an_empty_folder_is_no_picks_and_an_unknown_market(monkeypatch, tmp_path):
@@ -451,19 +466,23 @@ def _get_with_universe(monkeypatch, out_dir, now, states):
     return body
 
 
+FROZEN_ROWS = ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF", "GGGG", "HHHH", "JJJJ", "KKKK"]
+
+
 def test_a_pick_outside_the_scanner_universe_is_marked(monkeypatch):
     # ticket #20: the universe is built once at startup and watchlists never add to it, so
-    # DDDD gets no live bars and no setups. The card says so for that name only.
-    states = {s: object() for s in ("AAAA", "BBBB", "CCCC", "SPYX")}
+    # DDDD and GGGG get no live bars and no setups. The card says so for those names only,
+    # on a top pick and on a row below the top picks alike.
+    states = {s: object() for s in FROZEN_ROWS if s not in ("DDDD", "GGGG")} | {"SPYX": object()}
     body = _get_with_universe(monkeypatch, SAMPLES / "frozen", "2026-11-05 09:30", states)
-    assert body["in_universe"] == {"AAAA": True, "BBBB": True, "CCCC": True, "DDDD": False}
+    assert body["in_universe"] == {s: s not in ("DDDD", "GGGG") for s in FROZEN_ROWS}
     assert body["day"] == c.read_day(SAMPLES / "frozen", DAY)      # the day view stays unchanged
 
 
 def test_picks_all_in_the_universe_are_all_marked_scanned(monkeypatch):
-    states = {s: object() for s in ("AAAA", "BBBB", "CCCC", "DDDD")}
+    states = {s: object() for s in FROZEN_ROWS}
     body = _get_with_universe(monkeypatch, SAMPLES / "frozen", "2026-11-05 09:30", states)
-    assert body["in_universe"] == dict.fromkeys(["AAAA", "BBBB", "CCCC", "DDDD"], True)
+    assert body["in_universe"] == dict.fromkeys(FROZEN_ROWS, True)
 
 
 @pytest.mark.parametrize("states", [{}, None, "not a dict"])

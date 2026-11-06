@@ -2,7 +2,8 @@
 // OvPicksWindow.tsx only lays it out. Every state name comes from ov_picks/CONTRACT.md;
 // a state this card does not know is shown as written, never guessed at.
 import { etDate, fmtTimeET } from '../../lib/time'
-import type { OvJobEntry, OvPicksAnswer, OvPicksDay } from './types'
+import { DASH } from '../../lib/format'
+import type { OvEntry, OvJobEntry, OvPick, OvPicksAnswer, OvPicksDay } from './types'
 
 export type Tone = 'ok' | 'info' | 'warn' | 'bad'
 export interface Note { tone: Tone; text: string }
@@ -58,8 +59,8 @@ export function badges(day: OvPicksDay): Badge[] {
   else if (day.warmup_state === 'NOT_READY') out.push({ tone: 'warn', text: 'NOT READY', title: 'The warmup was not ready at the 09:20 ET deadline. The scan ran anyway.' })
   else if (day.warmup_state) out.push({ tone: 'info', text: day.warmup_state, title: 'Warmup state' })
   const settled: Record<string, Badge> = {
-    SETTLED_SAME: { tone: 'ok', text: 'SETTLED SAME', title: 'The 09:26 ET re-check made the same picks.' },
-    SETTLED_DIFF: { tone: 'warn', text: 'SETTLED DIFF', title: 'Bars that came in late for 09:24 would have changed the picks. The frozen picks stand.' },
+    SETTLED_SAME: { tone: 'ok', text: 'SETTLED SAME', title: 'The 09:26 ET re-check made the same top picks and the same ranked list.' },
+    SETTLED_DIFF: { tone: 'warn', text: 'SETTLED DIFF', title: 'Bars that came in late for 09:24 would have changed the top picks or the ranked list. The frozen list stands.' },
   }
   if (day.settled_state && settled[day.settled_state]) out.push(settled[day.settled_state])
   return out
@@ -69,8 +70,8 @@ export function badges(day: OvPicksDay): Badge[] {
 
 function settledNote(day: OvPicksDay, isToday: boolean): Note | null {
   switch (day.settled_state) {
-    case 'SETTLED_SAME': return { tone: 'ok', text: '09:26 re-check: same picks.' }
-    case 'SETTLED_DIFF': return { tone: 'warn', text: `09:26 re-check: bars that came in late for 09:24 would have changed the picks. The frozen picks stand. The module says: "${(day.settled_difference ?? '').trim()}"` }
+    case 'SETTLED_SAME': return { tone: 'ok', text: '09:26 re-check: same top picks and same ranked list.' }
+    case 'SETTLED_DIFF': return { tone: 'warn', text: `09:26 re-check: bars that came in late for 09:24 would have changed the top picks or the ranked list. The frozen list stands. The module says: "${(day.settled_difference ?? '').trim()}"` }
     case 'PENDING': return { tone: 'info', text: isToday ? '09:26 re-check: not run yet.' : '09:26 re-check: no record for this day.' }
     case 'UNREADABLE': return { tone: 'warn', text: '09:26 re-check: its record could not be read. See the warnings.' }
     case null: return null
@@ -103,15 +104,19 @@ export function dayNotes(a: OvPicksAnswer, day: OvPicksDay): Note[] {
   if (day.late && day.frozen_at) out.push({ tone: 'warn', text: `LATE: the first scan ran at ${timeET(day.frozen_at, true)}, after 09:25 ET. These are not on-time picks.` })
   if (day.warmup_state === 'NOT_READY') out.push({ tone: 'warn', text: `Warmup was not ready at the 09:20 ET deadline, and the picks were made anyway. Why: ${sentence(day.warmup_reason ?? '')}` })
   if (day.earnings_status && day.earnings_status !== 'available') {
-    out.push({ tone: 'bad', text: `Earnings data is ${day.earnings_status}, so there is no traded set and no earnings labels today.` })
+    out.push({ tone: 'bad', text: `Earnings data is ${day.earnings_status}, so no row has an earnings label today.` })
   }
   const n = day.picks.length
-  if (n === 0) out.push({ tone: 'warn', text: 'No name passed OV\'s gates today, so there are no picks.' })
-  else if (n < 4) out.push({ tone: 'info', text: `Only ${n} name${n > 1 ? 's' : ''} passed OV's gates today.` })
+  const top = topPicks(day).length
+  if (n === 0) out.push({ tone: 'warn', text: 'No name passed OV\'s gates today, so the list is empty.' })
+  else if (top === 0) out.push({ tone: 'info', text: `OV marked no top picks today. The ranked list has ${n} name${n > 1 ? 's' : ''}.` })
+  else if (top < MAX_TOP) out.push({ tone: 'info', text: `OV marked only ${top} top pick${top > 1 ? 's' : ''} today.` })
   const outside = day.picks.filter(p => a.in_universe?.[p.ticker] === false).map(p => p.ticker)
   if (outside.length) {
-    const are = outside.length > 1 ? 'are' : 'is'
-    out.push({ tone: 'warn', text: `${names(outside)} ${are} not in the scanner's universe, so ${outside.length > 1 ? 'they get' : 'it gets'} no live bars and no setups. Charts still work. The universe is set when the scanner starts.` })
+    const many = outside.length > 1
+    // A long list reads worse than a count; each such row has a "no setups" badge.
+    const who = outside.length <= NAME_LIST_MAX ? `${names(outside)} ${many ? 'are' : 'is'}` : `${outside.length} names in the list (marked "no setups") are`
+    out.push({ tone: 'warn', text: `${who} not in the scanner's universe, so ${many ? 'they get' : 'it gets'} no live bars and no setups. Charts still work. The universe is set when the scanner starts.` })
   }
   for (const note of [settledNote(day, a.is_today), parityNote(day, a.is_today)]) if (note) out.push(note)
   if (day.reference_promoted.length) out.push({ tone: 'info', text: `New listings this week: ${day.reference_promoted.join(', ')}.` })
@@ -172,4 +177,35 @@ export function allWarnings(a: OvPicksAnswer): string[] {
   return Array.from(new Set([...(a.warnings ?? []), ...(a.day?.warnings ?? []), ...(a.status?.warnings ?? [])]))
 }
 
-export const fmtWeight = (w: number) => `${(w * 100).toFixed(1)}%`
+// ── the ranked list ─────────────────────────────────────────────────────────
+
+/** The contract's limit on top picks (ov_picks/contract.py MAX_PICKS). */
+export const MAX_TOP = 4
+/** Up to this many names, a note lists them; above it, it gives a count. */
+const NAME_LIST_MAX = 5
+
+/** The day's top picks in rank order: the rows the watchlist and the notice carry. */
+export function topPicks(day: OvPicksDay): OvPick[] {
+  return day.picks.filter(p => p.top).sort((x, y) => x.rank - y.rank)
+}
+
+/** The value of the column `label` in a row's metrics, or undefined when it has none. */
+export function metricValue(p: OvPick, label: string): OvEntry['value'] | undefined {
+  return p.metrics.find(m => m.label === label)?.value
+}
+
+/** A value as the card shows it. The labels and units are the module's; the card adds
+ *  none and rounds only for reading. In a column of whole numbers (`whole`), thousands
+ *  separators; otherwise 2 decimals (up to 4 below 1), so 86 and 85.75 line up. */
+export function fmtValue(v: OvEntry['value'] | undefined, whole = Number.isInteger(v)): string {
+  if (v === null || v === undefined || v === '') return DASH
+  if (typeof v === 'string') return v
+  if (!Number.isFinite(v)) return DASH
+  if (whole && Number.isInteger(v)) return v.toLocaleString('en-US')
+  return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(v) < 1 ? 4 : 2 })
+}
+
+/** Whether every number in the column `label` is whole (true for a column with none). */
+export function wholeColumn(picks: OvPick[], label: string): boolean {
+  return picks.every(p => { const v = metricValue(p, label); return typeof v !== 'number' || Number.isInteger(v) })
+}

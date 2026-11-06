@@ -31,7 +31,9 @@ out/                          the module's output folder (mounted read-only into
   under names it owns. They are not part of this contract, and Edge Scanner does not read
   them.
 - Every file is UTF-8 JSON with `schema_version` and `kind`. NaN and Infinity are never
-  written. A file over 1,000,000 bytes (`MAX_FILE_BYTES`) is treated as unreadable.
+  written. A file over 8,000,000 bytes (`MAX_FILE_BYTES`) is treated as unreadable, and
+  the writers refuse a record that big. A picks file of 100 rows with full details is
+  about 1.5 MB.
 
 Types below: `text` is a JSON string, `date` is `YYYY-MM-DD` text, `time` is a UTC time
 written `YYYY-MM-DDTHH:MM:SSZ` (`utc_timestamp()` makes one; fractional seconds are
@@ -52,27 +54,44 @@ allowed), `ticker` is upper-case text with no spaces, at most 16 characters.
 | `late` | true/false | The first scan ran between 09:25 and 09:35 ET (spec US12). |
 | `shadow` | true/false | The shadow run is on: the card says "shadow: checking against OV" (spec US14). |
 | `earnings_status` | text | OV's earnings data status, verbatim: `available`, `unavailable` or `missing_prior_session_context`. |
-| `picks` | list | 0 to 4 picks (`MAX_PICKS`, the spec's four picks), ranked 1 to n in order, each ticker once. Fewer than 4 when fewer names pass OV's gates. |
+| `metric_labels` | list of text | The window's column headers, in order: at most 20 (`MAX_METRICS`), each label once. Every row's `metrics` has these labels in this order. The module chooses them. |
+| `picks` | list | The ranked list: every name OV ranked that day and did not reject, in OV's order, at most 100 rows (`MAX_ROWS`). Empty when no name passed OV's gates. |
 | `reference_state` | text or null | The last reference update before this day: `REF_OK`, `REF_WARN`, or null when none ran (the shadow run keeps the updaters off). |
 | `reference_promoted` | list of tickers | The names the new-listing rule promoted that week, each once. Empty when `reference_state` is null. |
 
-Each pick:
+Each row of `picks`:
 
 | Field | Type | Allowed values and rules |
 |---|---|---|
-| `rank` | whole number | 1 to 4. OV's `rank` column. |
-| `ticker` | ticker | OV's `ticker` column, upper-cased and stripped. |
-| `score` | number | OV's `ov_score` column. Finite. |
+| `rank` | whole number | OV's rank for the row, from 1. |
+| `ticker` | ticker | OV's ticker, upper-cased and stripped. |
+| `score` | number | OV's score for the row. Finite. |
+| `status` | text | OV's status for the row, verbatim. Not blank, at most 200 characters. |
+| `top` | true/false | One of OV's top picks for the day: the names OV marks as its candidates, at most 4 (`MAX_PICKS`, the spec's four picks). |
 | `earnings_label` | text or null | `AMC` (reported after the prior close), `BMO` (reports before this open) or null. OV's earnings release timing. |
-| `traded` | true/false | In OV's traded set: its `allocation_selected` column. |
-| `weight` | number | OV's `allocation_sizing_normalized_weight`: 0 to 1, 0 when not traded. |
+| `metrics` | list of entries | The window's columns for this row: one entry per `metric_labels` label, in that order. |
+| `details` | list of entries | The full row, for a click on it: at most 200 entries (`MAX_DETAILS`), in the order the module writes them. |
+
+Each entry of `metrics` and `details` is an object with exactly two fields:
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `label` | text | What the value is. Not blank, at most 200 characters (`MAX_TEXT_LEN`). |
+| `value` | number, text or null | A finite number, text of at most 200 characters, or null for no value. Never true or false: the module writes a flag as text. |
+
+The module decides which values go in `metrics` and `details`, and what each label says.
+Edge Scanner shows the labels and values as written and never reads meaning into them.
 
 Rules between fields:
 
-- When `earnings_status` is not `available`, no pick is traded and no pick has an
-  `earnings_label` (spec US17; live OV refuses to arm without earnings data).
-- The traded picks' weights sum to 1 within 1e-9 (`WEIGHT_SUM_TOLERANCE`). OV normalizes
-  them with `math.fsum`.
+- The ranks start at 1 and strictly increase down the list: the rows are in OV's order.
+  A gap is allowed, so the ranks stay OV's when the module leaves a row out.
+- Each ticker is listed once.
+- The rows marked `top` come first, and there are at most 4 of them. Fewer when fewer
+  names pass OV's candidate gates.
+- Every row's `metrics` labels equal `metric_labels`, in order.
+- When `earnings_status` is not `available`, no row has an `earnings_label` (spec US17:
+  no earnings labels without earnings data).
 
 ## Settled record: `settled.json`
 
@@ -186,20 +205,22 @@ bad entry is left out with a warning, and the other entries still read.
 
 ## Sample folders: `ov_picks/samples/`
 
-Each sample is an `out/` folder for 2026-11-05, a Thursday. The tickers are made up.
-The contract's own writer made every file, and `tests/test_ov_picks_contract.py`
-checks that each one still passes the writer's checks and reads as described.
+Each sample is an `out/` folder for 2026-11-05, a Thursday. The tickers, statuses, labels
+and numbers are made up; they show the format, not OV's metrics. Unless the table says
+otherwise, a sample's ranked list has 6 rows, the first 4 marked `top`. The contract's own
+writer made every file, and `tests/test_ov_picks_contract.py` checks that each one still
+passes the writer's checks and reads as described.
 
 | Folder | What it shows |
 |---|---|
-| `frozen` | On-time picks after go-live. All four are traded, with unequal weights 0.4, 0.3, 0.2 and 0.1. The numbers only show the format. One name promoted. No settled or parity record yet. |
+| `frozen` | On-time picks after go-live: a ranked list of 10 rows, the first 4 marked `top`. Nine metrics per row and 13 details. The labels are generic and the numbers only show the format. One name promoted. No settled or parity record yet. |
 | `shadow` | The shadow run: `shadow` true, no reference update, the 09:26 re-check the same. |
 | `late` | A first scan at 09:31 ET, marked `late`. |
 | `not_ready` | Warmup `NOT_READY` at the deadline, with the reason; picks made anyway. |
-| `earnings_unavailable` | `earnings_status` `unavailable`: no traded set, no earnings labels. |
-| `parity_match` | Shadow run, `PARITY_MATCH`. An earnings day: only the `AMC` and `BMO` names are traded, at 0.5 each. |
+| `earnings_unavailable` | `earnings_status` `unavailable`: no earnings labels. |
+| `parity_match` | Shadow run, `PARITY_MATCH`. An earnings day: two top picks are labelled `AMC` and `BMO`, and one row below them `BMO`. |
 | `parity_diff` | Shadow run, `PARITY_DIFF` with the first difference. |
 | `no_ov_run` | After go-live, `PARITY_NO_OV_RUN`. |
 | `settled_diff` | The 09:26 re-check found a different rank 4: `SETTLED_DIFF`; the frozen picks stand. |
-| `older_schema` | A schema version 1 picks file, no status file. Never edit it. When `SCHEMA_VERSION` goes above 1, it is the older-version sample, and the test reads it with the newer reader. |
+| `older_schema` | A schema version 1 picks file, no status file. Never edit it once version 1 has shipped. When `SCHEMA_VERSION` goes above 1, it is the older-version sample, and the test reads it with the newer reader. |
 | `warming` | 08:50 ET: `status.json` says `WARMING`, and there is no picks file yet. |

@@ -43,14 +43,21 @@ KIND_SETTLED = "ov_picks_settled"
 KIND_PARITY = "ov_picks_parity"
 KIND_STATUS = "ov_picks_status"
 
-# The spec's four pre-market picks (ashwinurao/edge-scanner#8).
+# The spec's four pre-market picks (ashwinurao/edge-scanner#8): the rows marked top.
 MAX_PICKS = 4
-# The traded weights sum to 1, added with math.fsum. 1e-9 is the spec's compare tolerance.
-WEIGHT_SUM_TOLERANCE = 1e-9
+# The ranked list: every name OV ranked that day and did not reject, up to this many rows
+# (owner, 2026-11-06: show the whole ranked list, sizing is manual).
+MAX_ROWS = 100
+# Per row: the window's columns, and the full row shown on a click.
+MAX_METRICS = 20
+MAX_DETAILS = 200
+# The longest label or text value; the module shortens longer text before it writes.
+MAX_TEXT_LEN = 200
 # A sanity bound only; the runner upper-cases and strips tickers the way OV's live code does.
 MAX_TICKER_LEN = 16
-# The picks file is under 2 KB; anything this big is not one.
-MAX_FILE_BYTES = 1_000_000
+# 100 rows with full details are about 1.5 MB. The writers refuse a record bigger than this,
+# so a reader never meets a file it would call unreadable.
+MAX_FILE_BYTES = 8_000_000
 
 # ---------------------------------------------------------------- jobs and states
 # Spec "Runner", daily schedule table: one job per row, with its result states.
@@ -138,20 +145,28 @@ F_WARMUP_REASON = "warmup_reason"
 F_LATE = "late"
 F_SHADOW = "shadow"
 F_EARNINGS_STATUS = "earnings_status"
+F_METRIC_LABELS = "metric_labels"
 F_PICKS = "picks"
 F_REFERENCE_STATE = "reference_state"
 F_REFERENCE_PROMOTED = "reference_promoted"
 PICKS_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_FROZEN_AT, F_WARMUP_STATE,
-                F_WARMUP_REASON, F_LATE, F_SHADOW, F_EARNINGS_STATUS, F_PICKS,
+                F_WARMUP_REASON, F_LATE, F_SHADOW, F_EARNINGS_STATUS, F_METRIC_LABELS, F_PICKS,
                 F_REFERENCE_STATE, F_REFERENCE_PROMOTED)
 
 F_RANK = "rank"
 F_TICKER = "ticker"
 F_SCORE = "score"
+F_STATUS = "status"            # a row's status here; the parity record's status below
+F_TOP = "top"
 F_EARNINGS_LABEL = "earnings_label"
-F_TRADED = "traded"
-F_WEIGHT = "weight"
-PICK_FIELDS = (F_RANK, F_TICKER, F_SCORE, F_EARNINGS_LABEL, F_TRADED, F_WEIGHT)
+F_METRICS = "metrics"
+F_DETAILS = "details"
+PICK_FIELDS = (F_RANK, F_TICKER, F_SCORE, F_STATUS, F_TOP, F_EARNINGS_LABEL, F_METRICS, F_DETAILS)
+
+# One entry of a row's metrics or details.
+F_LABEL = "label"
+F_VALUE = "value"
+ENTRY_FIELDS = (F_LABEL, F_VALUE)
 
 F_CHECKED_AT = "checked_at"
 F_STATE = "state"
@@ -159,7 +174,6 @@ F_DIFFERENCE = "difference"
 SETTLED_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_CHECKED_AT, F_STATE, F_DIFFERENCE)
 
 F_COMPARED_AT = "compared_at"
-F_STATUS = "status"
 F_FIRST_DIFFERENCE = "first_difference"
 PARITY_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_COMPARED_AT, F_STATUS,
                  F_FIRST_DIFFERENCE)
@@ -234,7 +248,7 @@ def _is_count(v: Any) -> bool:
 
 
 def _is_number(v: Any) -> bool:
-    # bool is an int in Python; a JSON true is not a score or a weight.
+    # bool is an int in Python; a JSON true is not a score or a value.
     return type(v) in (int, float) and math.isfinite(v)
 
 
@@ -334,6 +348,41 @@ def _unknown_keys(rec: Mapping, fields: tuple[str, ...], where: str) -> list[str
     return [f"{where}{key} is not a field of this record" for key in rec if key not in fields]
 
 
+def _is_label(v: Any) -> bool:
+    return _has_text(v) and len(v) <= MAX_TEXT_LEN
+
+
+def _is_value(v: Any) -> bool:
+    # A number, text or null. Not true or false: the module writes a flag as text.
+    return v is None or _is_number(v) or (isinstance(v, str) and len(v) <= MAX_TEXT_LEN)
+
+
+def _entries_problems(where: str, entries: Any, limit: int, *, strict: bool) -> list[str]:
+    """A row's metrics or details: a list of at most `limit` {label, value} objects."""
+    if not isinstance(entries, list):
+        return [f"{where} must be a list of {{label, value}} objects, not {entries!r}"]
+    problems = []
+    if len(entries) > limit:
+        problems.append(f"{where} has {len(entries)} entries; at most {limit}")
+    for j, entry in enumerate(entries):
+        at = f"{where}[{j}]"
+        if not isinstance(entry, Mapping):
+            problems.append(f"{at} is not a JSON object")
+            continue
+        if strict:
+            problems += _unknown_keys(entry, ENTRY_FIELDS, f"{at}.")
+        if F_LABEL not in entry:
+            problems.append(f"{at}.label is missing")
+        elif not _is_label(entry[F_LABEL]):
+            problems.append(f"{at}.label must be text of 1 to {MAX_TEXT_LEN} characters, not {entry[F_LABEL]!r}")
+        if F_VALUE not in entry:
+            problems.append(f"{at}.value is missing")
+        elif not _is_value(entry[F_VALUE]):
+            problems.append(f"{at}.value must be a finite number, text of at most {MAX_TEXT_LEN} "
+                            f"characters or null, not {entry[F_VALUE]!r}")
+    return problems
+
+
 def _pick_problems(i: int, pick: Any, *, strict: bool, known_values: bool) -> list[str]:
     where = f"picks[{i}]"
     if not isinstance(pick, Mapping):
@@ -343,18 +392,28 @@ def _pick_problems(i: int, pick: Any, *, strict: bool, known_values: bool) -> li
         (F_RANK, _is_count, "a whole number from 1"),
         (F_TICKER, _is_ticker, "an upper-case ticker with no spaces"),
         (F_SCORE, _is_number, "a finite number"),
+        (F_STATUS, _is_label, f"text of 1 to {MAX_TEXT_LEN} characters"),
+        (F_TOP, _is_bool, "true or false"),
         (F_EARNINGS_LABEL,
          lambda v: v is None or _is_state(v, EARNINGS_LABELS, known_values),
          f"one of {_one_of(EARNINGS_LABELS + (None,))}"),
-        (F_TRADED, _is_bool, "true or false"),
-        (F_WEIGHT, lambda v: _is_number(v) and 0.0 <= v <= 1.0, "a number from 0 to 1"),
     )
     for key, ok, what in checks:
         if key not in pick:
             problems.append(f"{where}.{key} is missing")
         elif not ok(pick[key]):
             problems.append(f"{where}.{key} must be {what}, not {pick[key]!r}")
+    for key, limit in ((F_METRICS, MAX_METRICS), (F_DETAILS, MAX_DETAILS)):
+        if key not in pick:
+            problems.append(f"{where}.{key} is missing")
+        else:
+            problems += _entries_problems(f"{where}.{key}", pick[key], limit, strict=strict)
     return problems
+
+
+def _is_metric_labels(v: Any) -> bool:
+    return (isinstance(v, list) and len(v) <= MAX_METRICS and all(map(_is_label, v))
+            and len(set(v)) == len(v))
 
 
 def _picks_problems(rec: Mapping, *, strict: bool, known_values: bool) -> list[str]:
@@ -371,6 +430,8 @@ def _picks_problems(rec: Mapping, *, strict: bool, known_values: bool) -> list[s
         (F_SHADOW, _is_bool, "true or false"),
         (F_EARNINGS_STATUS, lambda v: _is_state(v, EARNINGS_STATUSES, known_values),
          f"one of {_one_of(EARNINGS_STATUSES)}"),
+        (F_METRIC_LABELS, _is_metric_labels,
+         f"a list of at most {MAX_METRICS} different labels, each text of 1 to {MAX_TEXT_LEN} characters"),
         (F_PICKS, lambda v: isinstance(v, list), "a list"),
         (F_REFERENCE_STATE, lambda v: v is None or _is_state(v, REFERENCE_STATES, known_values),
          f"one of {_one_of(REFERENCE_STATES + (None,))}"),
@@ -412,6 +473,13 @@ def _picks_problems(rec: Mapping, *, strict: bool, known_values: bool) -> list[s
         problems += [f"reference_promoted lists {t} twice" for t in _twice(rec[F_REFERENCE_PROMOTED])]
     if F_PICKS not in bad:
         problems += _picks_rules(picks, rec.get(F_EARNINGS_STATUS), F_EARNINGS_STATUS not in bad)
+        if F_METRIC_LABELS not in bad:
+            labels = rec[F_METRIC_LABELS]
+            for i, p in enumerate(picks):
+                # Every row fills the same columns, in the same order, so the window can draw headers.
+                if [m[F_LABEL] for m in p[F_METRICS]] != labels:
+                    problems.append(f"picks[{i}].metrics labels must be metric_labels {labels}, "
+                                    f"not {[m[F_LABEL] for m in p[F_METRICS]]}")
     return problems
 
 
@@ -426,26 +494,24 @@ def _twice(values: list) -> list:
 
 def _picks_rules(picks: list, earnings_status: Any, earnings_ok: bool) -> list[str]:
     problems = []
-    if len(picks) > MAX_PICKS:
-        problems.append(f"picks has {len(picks)} entries; at most {MAX_PICKS} "
-                        "(the spec's four picks)")
+    if len(picks) > MAX_ROWS:
+        problems.append(f"picks has {len(picks)} rows; at most {MAX_ROWS}")
+    # OV's own order: ranks start at 1 and only go up. A gap is allowed: the module can
+    # leave out a row it cannot show, and the ranks stay OV's.
     ranks = [p[F_RANK] for p in picks]
-    if ranks != list(range(1, len(picks) + 1)):
-        problems.append(f"picks must be ranked 1 to {len(picks)} in order, not {ranks}")
+    if ranks and (ranks[0] != 1 or any(b <= a for a, b in zip(ranks, ranks[1:]))):
+        problems.append(f"picks must be in rank order, from rank 1 and strictly increasing, not {ranks}")
     problems += [f"picks lists {t} twice" for t in _twice([p[F_TICKER] for p in picks])]
-    for i, p in enumerate(picks):
-        if not p[F_TRADED] and p[F_WEIGHT] != 0:
-            problems.append(f"picks[{i}] is not traded, so its weight must be 0, not {p[F_WEIGHT]!r}")
-    traded = [p[F_WEIGHT] for p in picks if p[F_TRADED]]
-    if traded and abs(math.fsum(traded) - 1.0) > WEIGHT_SUM_TOLERANCE:
-        problems.append(f"the traded picks' weights sum to {math.fsum(traded)!r}, not 1")
-    # Spec US17 and OV's live refusal to arm without earnings data: when the earnings feed
-    # is not "available" there is no traded set and no earnings focus.
+    # OV's top picks lead the list, at most the spec's four.
+    tops = [p[F_TOP] for p in picks]
+    count = sum(tops)
+    if count > MAX_PICKS:
+        problems.append(f"{count} rows are marked top; at most {MAX_PICKS} (the spec's four picks)")
+    if tops != [True] * count + [False] * (len(picks) - count):
+        problems.append("the rows marked top must come first, before every other row")
+    # Spec US17: when the earnings feed is not "available" there is no earnings focus.
     if earnings_ok and earnings_status != EARNINGS_AVAILABLE:
         for i, p in enumerate(picks):
-            if p[F_TRADED]:
-                problems.append(f"picks[{i}] is traded, but earnings_status is {earnings_status!r}: "
-                                "no traded set without earnings data")
             if p[F_EARNINGS_LABEL] is not None:
                 problems.append(f"picks[{i}] has earnings_label {p[F_EARNINGS_LABEL]!r}, but "
                                 f"earnings_status is {earnings_status!r}")
@@ -565,7 +631,13 @@ def validate_status(record: Any) -> list[str]:
 def _dump(record: Mapping) -> str:
     # allow_nan=False: NaN and Infinity are not JSON, and a reader in another language
     # would refuse the file.
-    return json.dumps(record, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+    text = json.dumps(record, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+    size = len(text.encode("utf-8"))
+    if size > MAX_FILE_BYTES:
+        # The readers call a bigger file unreadable, so it is never written.
+        raise ContractError("record", [f"it is {size} bytes as JSON, more than the {MAX_FILE_BYTES} "
+                                       "a contract file may hold"])
+    return text
 
 
 def _temp_path(path: Path) -> Path:
@@ -657,8 +729,17 @@ def write_picks(out_dir: str | os.PathLike, record: Mapping) -> Path:
     if problems:
         raise ContractError("picks record", problems)
     rec = _ordered(record, KIND_PICKS, PICKS_FIELDS)
-    rec[F_PICKS] = [{key: p[key] for key in PICK_FIELDS} for p in rec[F_PICKS]]
+    rec[F_METRIC_LABELS] = list(rec[F_METRIC_LABELS])
+    rec[F_PICKS] = [_row(p) for p in rec[F_PICKS]]
     return _write_once(day_dir(out_dir, rec[F_TRADING_DATE]) / PICKS_FILE, rec)
+
+
+def _row(pick: Mapping) -> dict:
+    """One row with this version's fields only, in their order."""
+    row = {key: pick[key] for key in PICK_FIELDS}
+    for key in (F_METRICS, F_DETAILS):
+        row[key] = [{F_LABEL: e[F_LABEL], F_VALUE: e[F_VALUE]} for e in pick[key]]
+    return row
 
 
 def _write_follow_up(out_dir, record, *, what, problems, kind, fields, name) -> Path:
@@ -780,7 +861,7 @@ def read_day(out_dir: str | os.PathLike, trading_date: date | str) -> dict:
         V_HAS_PICKS: False, V_REASON_CODE: "", V_REASON: "", V_WARNINGS: [],
         F_SCHEMA_VERSION: None, F_TRADING_DATE: day, F_FROZEN_AT: None, F_WARMUP_STATE: None,
         F_WARMUP_REASON: None, F_LATE: None, F_SHADOW: None, F_EARNINGS_STATUS: None,
-        F_PICKS: [], F_REFERENCE_STATE: None, F_REFERENCE_PROMOTED: [],
+        F_METRIC_LABELS: [], F_PICKS: [], F_REFERENCE_STATE: None, F_REFERENCE_PROMOTED: [],
         V_SETTLED_STATE: None, V_SETTLED_SAME: False, V_SETTLED_DIFF: False,
         V_SETTLED_DIFFERENCE: None, V_SETTLED_AT: None, V_PARITY_STATUS: None,
         V_PARITY_FIRST_DIFFERENCE: None, V_PARITY_AT: None,
@@ -804,7 +885,8 @@ def read_day(out_dir: str | os.PathLike, trading_date: date | str) -> dict:
         view[V_WARNINGS].append(_newer_warning(name, version))
     for key in PICKS_FIELDS[2:]:
         view[key] = rec[key]
-    view[F_PICKS] = [{key: p[key] for key in PICK_FIELDS} for p in rec[F_PICKS]]
+    view[F_METRIC_LABELS] = list(rec[F_METRIC_LABELS])
+    view[F_PICKS] = [_row(p) for p in rec[F_PICKS]]
     view[F_REFERENCE_PROMOTED] = list(rec[F_REFERENCE_PROMOTED])
 
     for file_name, kind, checker, state_key, at_key, text_key, out in (

@@ -244,8 +244,9 @@ closes, so alerts come a few seconds later than on the stream. The code is in
 
 ## OV picks
 
-This fork can show the four pre-market picks that a separate module, "OV picks", freezes at
-09:25 ET each trading day. The module's code lives in a separate private repo. This repo holds
+This fork can show the pre-market ranked list that a separate module, "OV picks", freezes at
+09:25 ET each trading day: every name it ranked, with its top picks (at most four) marked. You
+pick and size from the list by hand; nothing here sizes or trades. The module's code lives in a separate private repo. This repo holds
 only what reads its files: the shared picks-file contract (`ov_picks/contract.py`,
 `ov_picks/CONTRACT.md`, `ov_picks/samples/`), the route, the window, the watchlist and notice, and
 the module's opt-in compose service. The two repos talk through files only, and a change to the
@@ -254,16 +255,17 @@ contract needs the same change in the module's repo ([CONTRIBUTING.md](CONTRIBUT
 **In the scanner.** When `OV_PICKS_DIR` names the module's output folder (mounted read-only), the
 scanner shows the day's picks. It never writes that folder.
 
-- The **OV picks** window (Add window menu) shows the day's picks in rank order with score, earnings
-  label, traded flag and weight, plus the warmup, LATE, settled and shadow flags, the check against
-  OV, the week's new listings, and when the market is closed, the next scan. It is display only: it
-  places no orders. It reads `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).
+- The **OV picks** window (Add window menu) shows the day's ranked list in rank order, the top
+  picks highlighted, in the columns the module sends; a click on a row shows all of its details.
+  It also shows the warmup, LATE, settled and shadow flags, the check against OV, the week's new
+  listings, and when the market is closed, the next scan. It is display only: it places no orders.
+  It reads `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).
   [USER_GUIDE: The OV picks window](USER_GUIDE.md#the-ov-picks-window) explains every part of it.
-- A pick outside the scanner's universe gets no live bars and no setups. The universe is built at
+- A name outside the scanner's universe gets no live bars and no setups. The universe is built at
   startup and a watchlist does not add to it, so the window marks that name "no setups".
 - Each trading morning, when the picks freeze, the scanner fills a watchlist called "OV picks"
-  (id `ov-picks`) with the day's names and sends one "OV picks ready: A, B, C, D" notice on the alert
-  feed. It shows in Scanner windows set to all setups. The marker `data/ov_picks/notified.json` keeps
+  (id `ov-picks`) with the day's top picks and sends one "OV picks ready: A, B, C, D" notice, which
+  lists them, on the alert feed. The rest of the ranked list stays in the window. It shows in Scanner windows set to all setups. The marker `data/ov_picks/notified.json` keeps
   a restart from sending it twice. A scanner that first sees the picks after 16:00 ET fills the
   watchlist but sends no notice. The code is in `scanner/ov_picks_day.py`.
 - Without `OV_PICKS_DIR` (when the scanner starts) none of this runs, and the window says so.

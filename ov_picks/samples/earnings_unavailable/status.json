@@ -20,7 +20,7 @@
       "state": "PICKS_FROZEN",
       "at": "2026-11-05T14:25:00Z",
       "trading_date": "2026-11-05",
-      "message": "Earnings feed unavailable (DoltHub did not answer). No traded set today.",
+      "message": "Earnings feed unavailable (DoltHub did not answer). No earnings labels today.",
       "next_at": "2026-11-06T14:25:00Z"
     },
     "archive": {
