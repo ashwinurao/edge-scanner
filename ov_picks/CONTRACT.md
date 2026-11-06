@@ -12,6 +12,7 @@ Scanner imports it on its own Python (3.11 and up) without the module's pinned l
 out/                          the module's output folder (mounted read-only into Edge Scanner)
   status.json                 each job's last state
   2026-11-05/                 one folder per ET trading day, named YYYY-MM-DD
+    preview.json              the ranked list as of the latest minute from 09:00 to 09:24 ET, replaced each minute
     picks.json                frozen at 09:25:00 ET, written once
     settled.json              the 09:26 ET re-check, written once
     parity.json               the 10:35 ET comparison with OV, written once
@@ -24,6 +25,11 @@ out/                          the module's output folder (mounted read-only into
   raises `AlreadyWritten` and leaves the first file as it was.
 - `settled.json` and `parity.json` are refused until the day has a `picks.json`. They
   add to the frozen picks and never replace them (spec "Freeze and restart rules").
+- `preview.json` (`PREVIEW_FILE`) is not a day record. Each minute's preview replaces the
+  last one atomically (a temp file, then a rename). The writer refuses a preview once the
+  day has a `picks.json`, so the last preview before the freeze stays as it was. A preview
+  is never the day's picks: Edge Scanner shows it only before 09:25 ET, and the watchlist
+  and the day's notice come from `picks.json` only.
 - `status.json` (`STATUS_FILE`) is rewritten atomically each time a job records a state.
   It assumes one writer process at a time. Two processes writing it at once can lose one
   entry until that job writes again.
@@ -92,6 +98,34 @@ Rules between fields:
 - Every row's `metrics` labels equal `metric_labels`, in order.
 - When `earnings_status` is not `available`, no row has an `earnings_label` (spec US17:
   no earnings labels without earnings data).
+
+## Preview file: `preview.json`
+
+`kind` is `ov_picks_preview` (`KIND_PREVIEW`). The owner's every-minute previews (Ash,
+2026-11-06): from 09:00 to 09:24 ET the module runs OV's pre-market scan as of each
+minute, so the top contenders show early. A preview has the picks file's ranked list,
+with the same rows, metrics and details, and the time it is as of.
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `schema_version` | whole number | `1` |
+| `kind` | text | `ov_picks_preview` |
+| `trading_date` | date | The ET trading day; equals the folder name. Never a Saturday or Sunday. |
+| `as_of` | time | The minute the preview is as of: OV scanned the bars before it, as the frozen scan at 09:25:00 scans the bars through 09:24. A whole minute; its ET date is `trading_date`; its ET time is before 09:25:00 (`PREVIEW_BEFORE_ET`). |
+| `previewed_at` | time | When the preview was written. Not before `as_of`. |
+| `shadow` | true/false | The shadow run is on, as in the picks file. |
+| `earnings_status` | text | OV's earnings data status, verbatim, as in the picks file. |
+| `metric_labels` | list of text | As in the picks file. |
+| `picks` | list | The ranked list as of `as_of`, rows as in the picks file. Empty when no name passed OV's gates. |
+
+The rules between fields are the picks file's: the rows' ranks, tickers, `top` rows,
+metric labels and earnings labels follow the same rules.
+
+`read_preview(out_dir, trading_date)` returns `has_preview`, `reason_code`, `reason`,
+`warnings`, `schema_version`, and the fields above but `kind` (`PREVIEW_VIEW_FIELDS`). It
+never raises on a missing, unreadable or invalid file: `has_preview` is false, and
+`reason_code` (`MISSING`, `UNREADABLE` or `INVALID`) and `reason` say why. It raises
+`ValueError` only for a `trading_date` that is not a date.
 
 ## Settled record: `settled.json`
 
@@ -166,13 +200,14 @@ Each entry:
 | `message` | text | What happened and what to do next. Required (not blank) for `NIGHTLY_WARN`, `NOT_READY`, `SETTLED_DIFF`, `PARITY_DIFF`, `REF_WARN`, `SKIPPED`, `REFUSED` and `FAILED`. |
 | `next_at` | time or null | When the job runs next, so a closed-market card can say when the next scan runs (spec US18). |
 
-Jobs (`JOBS`) and their states (`JOB_STATES`), from the spec's daily schedule table. All
-times are ET.
+Jobs (`JOBS`) and their states (`JOB_STATES`), from the spec's daily schedule table and
+the owner's previews. All times are ET.
 
 | Job | When | States |
 |---|---|---|
 | `nightly` | 03:30 | `NIGHTLY_OK`, `NIGHTLY_WARN` |
-| `warmup` | 08:45, deadline 09:20 | `WARMING` then `DATA_READY`; at the deadline `READY` or `NOT_READY` |
+| `warmup` | 08:30, deadline 09:20 | `WARMING` then `DATA_READY`; at the deadline `READY` or `NOT_READY` |
+| `preview` | each minute from 09:00 to 09:24, prepared from the warmup on | `PREVIEWED` after each preview |
 | `scan` | 09:25:00 | `PICKS_FROZEN` |
 | `settle` | 09:26 | `SETTLED_SAME`, `SETTLED_DIFF` |
 | `compare` | 10:35 | `PARITY_MATCH`, `PARITY_DIFF`, `PARITY_NO_OV_RUN` |
@@ -199,7 +234,9 @@ bad entry is left out with a warning, and the other entries still read.
   `MIN_SCHEMA_VERSION` (1). A file from a newer version reads with a warning; a state it
   adds is shown as written. A file from an older version is upgraded on read.
 - A new version only adds fields or values. It never changes what an existing field
-  means. A version that adds a field older files lack adds an upgrade step to
+  means. Version 1 gained the preview file and the `preview` job without a new version:
+  no existing record changed, and a reader that predates them keeps the `preview` status
+  entry as written. A version that adds a field older files lack adds an upgrade step to
   `_UPGRADES` in `ov_picks/contract.py`, so saved days keep loading (spec US67;
   CONTRIBUTING.md "Saved work survives").
 
@@ -224,3 +261,4 @@ passes the writer's checks and reads as described.
 | `settled_diff` | The 09:26 re-check found a different rank 4: `SETTLED_DIFF`; the frozen picks stand. |
 | `older_schema` | A schema version 1 picks file, no status file. Never edit it once version 1 has shipped. When `SCHEMA_VERSION` goes above 1, it is the older-version sample, and the test reads it with the newer reader. |
 | `warming` | 08:50 ET: `status.json` says `WARMING`, and there is no picks file yet. |
+| `preview` | 09:14 ET in the shadow run: `status.json` says the warmup is `DATA_READY` and the preview job `PREVIEWED`; `preview.json` is as of 09:14 ET with 6 rows, the first 4 marked `top`. No picks file yet. |

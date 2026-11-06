@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "kind": "ov_picks_status",
+  "jobs": {
+    "nightly": {
+      "state": "NIGHTLY_OK",
+      "at": "2026-11-05T08:30:41Z",
+      "trading_date": "2026-11-05",
+      "message": "Final daily bar for 2026-11-04 checked and written; hashes match the pins.",
+      "next_at": "2026-11-06T08:30:00Z"
+    },
+    "warmup": {
+      "state": "DATA_READY",
+      "at": "2026-11-05T13:36:10Z",
+      "trading_date": "2026-11-05",
+      "message": "OV's data for 2026-11-05 is ready at 08:36:10 ET after 1 attempt(s): 352 prepared rows, cache mode incremental. The verdict comes at the 09:20 ET deadline.",
+      "next_at": null
+    },
+    "preview": {
+      "state": "PREVIEWED",
+      "at": "2026-11-05T14:14:21Z",
+      "trading_date": "2026-11-05",
+      "message": "Preview as of 09:14 ET for 2026-11-05: 6 ranked names; OV's top picks: AAAA, BBBB, CCCC, DDDD. Not frozen: the picks freeze at 09:25 ET.",
+      "next_at": "2026-11-05T14:15:00Z"
+    },
+    "scan": {
+      "state": "PICKS_FROZEN",
+      "at": "2026-11-04T14:25:00Z",
+      "trading_date": "2026-11-04",
+      "message": "",
+      "next_at": "2026-11-05T14:25:00Z"
+    },
+    "archive": {
+      "state": "ARCHIVED",
+      "at": "2026-11-04T21:19:30Z",
+      "trading_date": "2026-11-04",
+      "message": "Scan history v3 appended; pool and ETF minute bars saved.",
+      "next_at": "2026-11-05T21:15:00Z"
+    },
+    "reference": {
+      "state": "SKIPPED",
+      "at": "2026-10-31T14:00:00Z",
+      "trading_date": null,
+      "message": "Reference updates are off during the shadow run; OV's reference is copied at 16:15 ET instead.",
+      "next_at": "2026-11-07T15:00:00Z"
+    }
+  }
+}

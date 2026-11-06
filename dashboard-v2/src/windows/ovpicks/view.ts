@@ -3,7 +3,7 @@
 // a state this card does not know is shown as written, never guessed at.
 import { etDate, fmtTimeET } from '../../lib/time'
 import { DASH } from '../../lib/format'
-import type { OvEntry, OvJobEntry, OvPick, OvPicksAnswer, OvPicksDay } from './types'
+import type { OvEntry, OvJobEntry, OvPick, OvPicksAnswer, OvPicksDay, OvPicksPreview } from './types'
 
 export type Tone = 'ok' | 'info' | 'warn' | 'bad'
 export interface Note { tone: Tone; text: string }
@@ -106,18 +106,7 @@ export function dayNotes(a: OvPicksAnswer, day: OvPicksDay): Note[] {
   if (day.earnings_status && day.earnings_status !== 'available') {
     out.push({ tone: 'bad', text: `Earnings data is ${day.earnings_status}, so no row has an earnings label today.` })
   }
-  const n = day.picks.length
-  const top = topPicks(day).length
-  if (n === 0) out.push({ tone: 'warn', text: 'No name passed OV\'s gates today, so the list is empty.' })
-  else if (top === 0) out.push({ tone: 'info', text: `OV marked no top picks today. The ranked list has ${n} name${n > 1 ? 's' : ''}.` })
-  else if (top < MAX_TOP) out.push({ tone: 'info', text: `OV marked only ${top} top pick${top > 1 ? 's' : ''} today.` })
-  const outside = day.picks.filter(p => a.in_universe?.[p.ticker] === false).map(p => p.ticker)
-  if (outside.length) {
-    const many = outside.length > 1
-    // A long list reads worse than a count; each such row has a "no setups" badge.
-    const who = outside.length <= NAME_LIST_MAX ? `${names(outside)} ${many ? 'are' : 'is'}` : `${outside.length} names in the list (marked "no setups") are`
-    out.push({ tone: 'warn', text: `${who} not in the scanner's universe, so ${many ? 'they get' : 'it gets'} no live bars and no setups. Charts still work. The universe is set when the scanner starts.` })
-  }
+  out.push(...listNotes(a, day.picks, 'today'))
   for (const note of [settledNote(day, a.is_today), parityNote(day, a.is_today)]) if (note) out.push(note)
   if (day.reference_promoted.length) out.push({ tone: 'info', text: `New listings this week: ${day.reference_promoted.join(', ')}.` })
   if (day.reference_state === 'REF_WARN') {
@@ -125,6 +114,61 @@ export function dayNotes(a: OvPicksAnswer, day: OvPicksDay): Note[] {
     out.push({ tone: 'warn', text: `The last sector and listing update had a warning${msg ? `: ${sentence(msg)}` : '.'}` })
   }
   return out
+}
+
+/** How many top picks, and the names the scanner does not scan, for a ranked list. */
+function listNotes(a: OvPicksAnswer, picks: OvPick[], when: string): Note[] {
+  const out: Note[] = []
+  const n = picks.length
+  const top = picks.filter(p => p.top).length
+  if (n === 0) out.push({ tone: 'warn', text: `No name passed OV's gates ${when}, so the list is empty.` })
+  else if (top === 0) out.push({ tone: 'info', text: `OV marked no top picks ${when}. The ranked list has ${n} name${n > 1 ? 's' : ''}.` })
+  else if (top < MAX_TOP) out.push({ tone: 'info', text: `OV marked only ${top} top pick${top > 1 ? 's' : ''} ${when}.` })
+  const outside = picks.filter(p => a.in_universe?.[p.ticker] === false).map(p => p.ticker)
+  if (outside.length) {
+    const many = outside.length > 1
+    // A long list reads worse than a count; each such row has a "no setups" badge.
+    const who = outside.length <= NAME_LIST_MAX ? `${names(outside)} ${many ? 'are' : 'is'}` : `${outside.length} names in the list (marked "no setups") are`
+    out.push({ tone: 'warn', text: `${who} not in the scanner's universe, so ${many ? 'they get' : 'it gets'} no live bars and no setups. Charts still work. The universe is set when the scanner starts.` })
+  }
+  return out
+}
+
+// ── notes for a preview, before the picks freeze ────────────────────────────
+
+/** A preview older than this, against the route's clock, says so: one comes each minute. */
+const PREVIEW_STALE_MS = 2 * 60_000
+
+export function previewBadges(p: OvPicksPreview): Badge[] {
+  const out: Badge[] = [{ tone: 'warn', text: 'PREVIEW: not frozen', title: 'OV\'s ranked list as of one minute before 09:25 ET. It changes each minute; the picks freeze at 09:25 ET.' }]
+  if (p.shadow) out.push({ tone: 'info', text: 'shadow: checking against OV', title: 'The shadow run: these previews are still being proved against OV.' })
+  return out
+}
+
+export function previewNotes(a: OvPicksAnswer, p: OvPicksPreview): Note[] {
+  const out: Note[] = []
+  const at = p.as_of ? timeET(p.as_of) : 'an unknown minute'
+  out.push({ tone: 'info', text: `Preview as of ${at}: OV's ranked list from the bars before that minute. A new one comes each minute until the picks freeze at 09:25 ET. The "OV picks" watchlist and the notice wait for the frozen picks.` })
+  const job = todaysJobs(a).preview
+  const age = p.as_of ? Date.parse(a.now_et) - Date.parse(p.as_of) : 0
+  if (age > PREVIEW_STALE_MS) {
+    const why = job && job.state !== 'PREVIEWED' && job.message ? ` The module says: ${sentence(job.message)}` : ''
+    out.push({ tone: 'warn', text: `No newer preview has come since ${at}.${why}` })
+  }
+  const w = todaysJobs(a).warmup
+  if (w && WARMUP_LINE[w.state]) out.push(WARMUP_LINE[w.state](w))
+  if (p.earnings_status && p.earnings_status !== 'available') {
+    out.push({ tone: 'bad', text: `Earnings data is ${p.earnings_status}, so no row has an earnings label.` })
+  }
+  out.push(...listNotes(a, p.picks, `as of ${at}`))
+  return out
+}
+
+const PREVIEW_LINE: Record<string, (e: OvJobEntry) => Note> = {
+  RUNNING: e => ({ tone: 'info', text: `Previews: getting ready since ${timeET(e.at)}. The first one is as of 09:00 ET.` }),
+  FAILED: e => ({ tone: 'warn', text: `Previews: ${sentence(e.message)}` }),
+  REFUSED: e => ({ tone: 'warn', text: `Previews: ${sentence(e.message)}` }),
+  SKIPPED: e => ({ tone: 'info', text: `Previews: ${sentence(e.message)}` }),
 }
 
 // ── notes for a day without picks ───────────────────────────────────────────
@@ -165,6 +209,13 @@ export function noPicks(a: OvPicksAnswer, day: OvPicksDay): { title: string; not
     const w = jobs.warmup
     if (w) notes.push(WARMUP_LINE[w.state]?.(w) ?? { tone: 'info', text: `Warmup: ${w.state}.` })
     else if (a.market_closed === null && a.market_note) notes.push({ tone: 'info', text: sentence(a.market_note) })
+    // Inside the preview window without a preview: the module's reason when it gave one,
+    // else the reader's (the file is not there yet, or can't be used).
+    const pv = jobs.preview
+    if (a.preview && !a.preview.has_preview) {
+      notes.push(pv && PREVIEW_LINE[pv.state] ? PREVIEW_LINE[pv.state](pv)
+        : { tone: a.preview.reason_code === 'MISSING' ? 'info' : 'warn', text: a.preview.reason })
+    }
     notes.push({ tone: 'info', text: day.reason })
   }
   if (a.next_scan_et) notes.push({ tone: 'info', text: `Next scan: ${whenET(a.next_scan_et, a.today_et)}.` })
@@ -174,7 +225,8 @@ export function noPicks(a: OvPicksAnswer, day: OvPicksDay): { title: string; not
 
 /** Every warning the route, the day and the status file carry, once each. */
 export function allWarnings(a: OvPicksAnswer): string[] {
-  return Array.from(new Set([...(a.warnings ?? []), ...(a.day?.warnings ?? []), ...(a.status?.warnings ?? [])]))
+  return Array.from(new Set([...(a.warnings ?? []), ...(a.day?.warnings ?? []), ...(a.preview?.warnings ?? []),
+    ...(a.status?.warnings ?? [])]))
 }
 
 // ── the ranked list ─────────────────────────────────────────────────────────

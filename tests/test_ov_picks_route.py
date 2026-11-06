@@ -200,7 +200,12 @@ ROUTE_CASES = {
     # 08:50 ET, warming, no picks file yet: today's scan is still to come.
     "warming": ("2026-11-05 08:50", False, None, None, None, None, [], 0, None, None,
                 "2026-11-05T14:25:00Z"),
+    # 09:14:30 ET, data ready, the preview as of 09:14 and no picks file yet.
+    "preview": ("2026-11-05 09:14:30", False, None, None, None, None, [], 0, None, None,
+                "2026-11-05T14:25:00Z"),
 }
+# The warmup state of each sample day without picks.
+NO_PICKS_WARMUP = {"warming": c.WARMING, "preview": c.DATA_READY}
 
 
 def test_every_sample_folder_has_a_route_case():
@@ -223,9 +228,11 @@ def test_the_route_serves_each_sample_day(monkeypatch, case):
     assert body["status"] == c.read_status(folder)
     day = body["day"]
     assert day["has_picks"] is has, day["reason"]
+    # Only the preview sample is inside the preview window, before the freeze.
+    assert body["preview"] == (c.read_preview(folder, DAY) if case == "preview" else None)
     if not has:
         assert day["reason_code"] == c.MISSING and "09:25 ET" in day["reason"]
-        assert body["status"]["jobs"][c.JOB_WARMUP]["state"] == c.WARMING
+        assert body["status"]["jobs"][c.JOB_WARMUP]["state"] == NO_PICKS_WARMUP[case]
         return
     assert (day["shadow"], day["late"], day["warmup_state"]) == (shadow, late, warmup)
     assert day["earnings_status"] == earnings
@@ -496,6 +503,63 @@ def test_a_scanner_with_no_universe_to_ask_never_marks_a_name_unscanned(monkeypa
 def test_no_universe_answer_without_picks(monkeypatch):
     body = _get_with_universe(monkeypatch, SAMPLES / "warming", "2026-11-05 08:50", {"AAAA": object()})
     assert body["day"]["has_picks"] is False and body["in_universe"] is None
+
+
+# ---------------------------------------------------------------- the previews (Ash, 2026-11-06)
+
+PREVIEW_ROWS = ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF"]
+
+
+@pytest.mark.parametrize("now, shown", [
+    ("2026-11-05 08:59:59", False), ("2026-11-05 09:00", True), ("2026-11-05 09:14:30", True),
+    ("2026-11-05 09:24:59", True), ("2026-11-05 09:25", False), ("2026-11-05 09:40", False),
+])
+def test_a_preview_shows_only_from_0900_until_the_freeze(monkeypatch, now, shown):
+    body = _get(monkeypatch, SAMPLES / "preview", now)
+    if not shown:
+        assert body["preview"] is None
+        return
+    preview = body["preview"]
+    assert preview == c.read_preview(SAMPLES / "preview", DAY)    # the reader's view, unchanged
+    assert preview["has_preview"] is True and preview["as_of"] == "2026-11-05T14:14:00Z"
+    assert [p["ticker"] for p in preview["picks"] if p["top"]] == TOP
+    assert body["day"]["has_picks"] is False
+
+
+def test_frozen_picks_always_win_over_a_preview(monkeypatch, tmp_path):
+    folder = tmp_path / "out"
+    shutil.copytree(SAMPLES / "preview", folder)
+    c.write_picks(folder, _record(DAY, "2026-11-05T14:20:05Z"))   # a hand-run scan, say
+    body = _get(monkeypatch, folder, "2026-11-05 09:21")
+    assert body["day"]["has_picks"] is True and body["preview"] is None
+
+
+def test_no_preview_file_in_the_window_is_the_readers_missing_view(monkeypatch):
+    body = _get(monkeypatch, SAMPLES / "warming", "2026-11-05 09:05")
+    preview = body["preview"]
+    assert preview["has_preview"] is False and preview["reason_code"] == c.MISSING
+    assert "09:00 to 09:24 ET" in preview["reason"]
+
+
+def test_no_preview_on_a_closed_day(monkeypatch, tmp_path):
+    # Saturday 2026-11-07: the route serves Thursday's folder, and no preview.
+    body = _get(monkeypatch, SAMPLES / "preview", "2026-11-07 09:10")
+    assert body["market_closed"] is True and body["preview"] is None
+
+
+def test_a_reader_without_previews_still_serves_the_day(monkeypatch):
+    # An install whose ov_picks/contract.py predates the preview file.
+    old = SimpleNamespace(**{k: getattr(c, k) for k in dir(c) if not k.startswith("__")})
+    del old.PREVIEW_BEFORE_ET, old.read_preview
+    monkeypatch.setattr(route, "_load_contract", lambda: old)
+    body = _get(monkeypatch, SAMPLES / "preview", "2026-11-05 09:14:30")
+    assert body["reason_code"] == "" and body["preview"] is None and body["day"]["has_picks"] is False
+
+
+def test_preview_rows_outside_the_scanner_universe_are_marked(monkeypatch):
+    states = {s: object() for s in PREVIEW_ROWS if s != "EEEE"}
+    body = _get_with_universe(monkeypatch, SAMPLES / "preview", "2026-11-05 09:14:30", states)
+    assert body["in_universe"] == {s: s != "EEEE" for s in PREVIEW_ROWS}
 
 
 def test_no_universe_answer_when_not_set_up(monkeypatch):

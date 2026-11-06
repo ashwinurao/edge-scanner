@@ -5,6 +5,7 @@ the OV picks module, market data or broker keys:
 
     npm --prefix dashboard-v2 run build
     python scripts/ov_picks_demo.py --sample frozen --at "2026-11-05 09:25:05"
+    python scripts/ov_picks_demo.py --sample preview --at "2026-11-05 09:14:30"
     # then open http://127.0.0.1:7787/v2/
 
 It runs the real app (scanner/api.py create_app) with a stub scanner and no data feed,
@@ -101,10 +102,13 @@ def main() -> None:
     else:
         os.environ["OV_PICKS_DIR"] = str(work / "out")
 
-    # The stub scanner scans every name in the folder's days, except --not-scanned.
+    # The stub scanner scans every name in the folder's days and previews, except --not-scanned.
     from ov_picks import contract
-    days = [d.name for d in (work / "out").iterdir() if d.is_dir() and (d / contract.PICKS_FILE).is_file()]
-    tickers = {p["ticker"] for d in days for p in contract.read_day(work / "out", d)["picks"]}
+    folders = [d for d in (work / "out").iterdir() if d.is_dir()]
+    tickers = {p["ticker"] for d in folders if (d / contract.PICKS_FILE).is_file()
+               for p in contract.read_day(work / "out", d.name)["picks"]}
+    tickers |= {p["ticker"] for d in folders if (d / contract.PREVIEW_FILE).is_file()
+                for p in contract.read_preview(work / "out", d.name)["picks"]}
     skip = {s.strip().upper() for s in args.not_scanned.split(",") if s.strip()}
     scanned = sorted(tickers - skip) or ["SPY"]
     stub = SimpleNamespace(_states={s: object() for s in scanned}, _spy_state=None, _regime=None, _sector_map={})

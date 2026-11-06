@@ -260,6 +260,11 @@ scanner shows the day's picks. It never writes that folder.
   It also shows the warmup, LATE, settled and shadow flags, the check against OV, the week's new
   listings, and when the market is closed, the next scan. It is display only: it places no orders.
   It reads `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).
+- From 09:00 to 09:25 ET, before the picks freeze, the window shows the module's **preview**: the
+  same ranked list as of the latest minute, marked "PREVIEW: not frozen". The module previews
+  each minute from 09:00 to 09:24 ET, so the top contenders show early and there is time to read
+  why they rank there (the owner's request, 2026-11-06). The watchlist and the notice still come
+  from the frozen 09:25 picks only.
   [USER_GUIDE: The OV picks window](USER_GUIDE.md#the-ov-picks-window) explains every part of it.
 - A name outside the scanner's universe gets no live bars and no setups. The universe is built at
   startup and a watchlist does not add to it, so the window marks that name "no setups".
@@ -270,7 +275,8 @@ scanner shows the day's picks. It never writes that folder.
   watchlist but sends no notice. The code is in `scanner/ov_picks_day.py`.
 - Without `OV_PICKS_DIR` (when the scanner starts) none of this runs, and the window says so.
   `python scripts/ov_picks_demo.py --sample frozen` shows the window on a sample day, on
-  127.0.0.1:7787, without keys or market data.
+  127.0.0.1:7787, without keys or market data (`--sample preview --at "2026-11-05 09:14:30"` for
+  a preview).
 
 **The module on a home server.** The module runs as the `ov-picks` service in `compose.yaml`.
 Compose builds its image from a local clone of the private repo. The service is off unless

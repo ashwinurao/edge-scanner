@@ -6,9 +6,11 @@ type and allowed value. This module is its code:
 
 - constants for every file name, field name, job and state, for other code to import;
 - write_picks, write_settled, write_parity: write one day record once, atomically;
+- write_preview: replace the day's preview, the ranked list as of one minute before 09:25 ET;
 - record_job_state: replace one job's entry in the status file;
-- read_day, read_status: readers that never raise on a missing or bad file;
-- validate_picks, validate_settled, validate_parity, validate_status: the writer's checks.
+- read_day, read_preview, read_status: readers that never raise on a missing or bad file;
+- validate_picks, validate_settled, validate_parity, validate_preview, validate_status:
+  the writer's checks.
 
 Standard library only, so Edge Scanner (Python 3.11 and up, its own requirements) and
 the module (Python 3.12, OV's pins) both import it.
@@ -20,7 +22,7 @@ import math
 import os
 import re
 import threading
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -35,12 +37,14 @@ MIN_SCHEMA_VERSION = 1      # the oldest version the readers accept
 PICKS_FILE = "picks.json"
 SETTLED_FILE = "settled.json"
 PARITY_FILE = "parity.json"
+PREVIEW_FILE = "preview.json"
 STATUS_FILE = "status.json"
 
 # The "kind" field of each file, so a file put in the wrong place is refused.
 KIND_PICKS = "ov_picks"
 KIND_SETTLED = "ov_picks_settled"
 KIND_PARITY = "ov_picks_parity"
+KIND_PREVIEW = "ov_picks_preview"
 KIND_STATUS = "ov_picks_status"
 
 # The spec's four pre-market picks (ashwinurao/edge-scanner#8): the rows marked top.
@@ -58,18 +62,23 @@ MAX_TICKER_LEN = 16
 # 100 rows with full details are about 1.5 MB. The writers refuse a record bigger than this,
 # so a reader never meets a file it would call unreadable.
 MAX_FILE_BYTES = 8_000_000
+# A preview shows the ranked list as of a minute before the 09:25:00 ET freeze, never at or
+# after it (owner, 2026-11-06: one preview a minute from 09:00 ET, the picks still at 09:25).
+PREVIEW_BEFORE_ET = time(9, 25)
 
 # ---------------------------------------------------------------- jobs and states
 # Spec "Runner", daily schedule table: one job per row, with its result states.
 
 JOB_NIGHTLY = "nightly"        # 03:30 ET
-JOB_WARMUP = "warmup"          # 08:45 ET, then the 09:20 ET readiness deadline
+JOB_WARMUP = "warmup"          # 08:30 ET, then the 09:20 ET readiness deadline
+JOB_PREVIEW = "preview"        # 09:00-09:24 ET, one preview a minute (owner, 2026-11-06)
 JOB_SCAN = "scan"              # 09:25:00 ET
 JOB_SETTLE = "settle"          # 09:26 ET
 JOB_COMPARE = "compare"        # 10:35 ET
 JOB_ARCHIVE = "archive"        # 16:15 ET
 JOB_REFERENCE = "reference"    # Saturday 10:00 ET, after go-live only
-JOBS = (JOB_NIGHTLY, JOB_WARMUP, JOB_SCAN, JOB_SETTLE, JOB_COMPARE, JOB_ARCHIVE, JOB_REFERENCE)
+JOBS = (JOB_NIGHTLY, JOB_WARMUP, JOB_PREVIEW, JOB_SCAN, JOB_SETTLE, JOB_COMPARE, JOB_ARCHIVE,
+        JOB_REFERENCE)
 
 NIGHTLY_OK = "NIGHTLY_OK"
 NIGHTLY_WARN = "NIGHTLY_WARN"
@@ -77,6 +86,7 @@ WARMING = "WARMING"
 DATA_READY = "DATA_READY"
 READY = "READY"
 NOT_READY = "NOT_READY"
+PREVIEWED = "PREVIEWED"
 PICKS_FROZEN = "PICKS_FROZEN"
 SETTLED_SAME = "SETTLED_SAME"
 SETTLED_DIFF = "SETTLED_DIFF"
@@ -98,6 +108,7 @@ COMMON_STATES = (RUNNING, SKIPPED, REFUSED, FAILED)
 JOB_STATES = {
     JOB_NIGHTLY: (NIGHTLY_OK, NIGHTLY_WARN) + COMMON_STATES,
     JOB_WARMUP: (WARMING, DATA_READY, READY, NOT_READY) + COMMON_STATES,
+    JOB_PREVIEW: (PREVIEWED,) + COMMON_STATES,
     JOB_SCAN: (PICKS_FROZEN,) + COMMON_STATES,
     JOB_SETTLE: (SETTLED_SAME, SETTLED_DIFF) + COMMON_STATES,
     JOB_COMPARE: (PARITY_MATCH, PARITY_DIFF, PARITY_NO_OV_RUN) + COMMON_STATES,
@@ -173,6 +184,12 @@ F_STATE = "state"
 F_DIFFERENCE = "difference"
 SETTLED_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_CHECKED_AT, F_STATE, F_DIFFERENCE)
 
+F_AS_OF = "as_of"
+F_PREVIEWED_AT = "previewed_at"
+# A preview has the picks file's ranked list (same rows, same metrics) and its time, nothing more.
+PREVIEW_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_AS_OF, F_PREVIEWED_AT, F_SHADOW,
+                  F_EARNINGS_STATUS, F_METRIC_LABELS, F_PICKS)
+
 F_COMPARED_AT = "compared_at"
 F_FIRST_DIFFERENCE = "first_difference"
 PARITY_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_COMPARED_AT, F_STATUS,
@@ -202,6 +219,11 @@ VIEW_FIELDS = ((V_HAS_PICKS, V_REASON_CODE, V_REASON, V_WARNINGS)
                + tuple(f for f in PICKS_FIELDS if f != F_KIND)
                + (V_SETTLED_STATE, V_SETTLED_SAME, V_SETTLED_DIFF, V_SETTLED_DIFFERENCE,
                   V_SETTLED_AT, V_PARITY_STATUS, V_PARITY_FIRST_DIFFERENCE, V_PARITY_AT))
+
+# What read_preview returns.
+V_HAS_PREVIEW = "has_preview"
+PREVIEW_VIEW_FIELDS = ((V_HAS_PREVIEW, V_REASON_CODE, V_REASON, V_WARNINGS)
+                       + tuple(f for f in PREVIEW_FIELDS if f != F_KIND))
 
 # What read_status returns.
 V_HAS_STATUS = "has_status"
@@ -438,20 +460,8 @@ def _picks_problems(rec: Mapping, *, strict: bool, known_values: bool) -> list[s
         (F_REFERENCE_PROMOTED, lambda v: isinstance(v, list) and all(map(_is_ticker, v)),
          "a list of upper-case tickers"),
     )
-    bad = set()
-    for key, ok, what in checks:
-        if key not in rec:
-            problems.append(f"{key} is missing")
-            bad.add(key)
-        elif not ok(rec[key]):
-            problems.append(f"{key} must be {what}, not {rec[key]!r}")
-            bad.add(key)
-    picks = rec.get(F_PICKS) if F_PICKS not in bad else []
-    for i, pick in enumerate(picks):
-        found = _pick_problems(i, pick, strict=strict, known_values=known_values)
-        problems += found
-        if found:
-            bad.add(F_PICKS)
+    bad = _field_problems(rec, checks, problems)
+    problems += _rows_problems(rec, bad, strict=strict, known_values=known_values)
 
     if F_TRADING_DATE not in bad:
         day = date.fromisoformat(rec[F_TRADING_DATE])
@@ -471,16 +481,84 @@ def _picks_problems(rec: Mapping, *, strict: bool, known_values: bool) -> list[s
             problems.append("reference_promoted lists names, but reference_state is null: "
                             "no reference update ran")
         problems += [f"reference_promoted lists {t} twice" for t in _twice(rec[F_REFERENCE_PROMOTED])]
-    if F_PICKS not in bad:
-        problems += _picks_rules(picks, rec.get(F_EARNINGS_STATUS), F_EARNINGS_STATUS not in bad)
-        if F_METRIC_LABELS not in bad:
-            labels = rec[F_METRIC_LABELS]
-            for i, p in enumerate(picks):
-                # Every row fills the same columns, in the same order, so the window can draw headers.
-                if [m[F_LABEL] for m in p[F_METRICS]] != labels:
-                    problems.append(f"picks[{i}].metrics labels must be metric_labels {labels}, "
-                                    f"not {[m[F_LABEL] for m in p[F_METRICS]]}")
+    return problems + _list_rules(rec, bad)
+
+
+def _field_problems(rec: Mapping, checks: tuple, problems: list[str]) -> set[str]:
+    """Check each (key, ok, what) of `checks`; add a problem for each, and return the bad keys."""
+    bad = set()
+    for key, ok, what in checks:
+        if key not in rec:
+            problems.append(f"{key} is missing")
+            bad.add(key)
+        elif not ok(rec[key]):
+            problems.append(f"{key} must be {what}, not {rec[key]!r}")
+            bad.add(key)
+    return bad
+
+
+def _rows_problems(rec: Mapping, bad: set[str], *, strict: bool, known_values: bool) -> list[str]:
+    """Each row of the ranked list. A bad row marks `picks` bad, so the list rules skip it."""
+    problems = []
+    for i, pick in enumerate(rec[F_PICKS] if F_PICKS not in bad else []):
+        found = _pick_problems(i, pick, strict=strict, known_values=known_values)
+        problems += found
+        if found:
+            bad.add(F_PICKS)
     return problems
+
+
+def _list_rules(rec: Mapping, bad: set[str]) -> list[str]:
+    """The rules between the rows of a ranked list, the picks file's and the preview's alike."""
+    if F_PICKS in bad:
+        return []
+    picks = rec[F_PICKS]
+    problems = _picks_rules(picks, rec.get(F_EARNINGS_STATUS), F_EARNINGS_STATUS not in bad)
+    if F_METRIC_LABELS not in bad:
+        labels = rec[F_METRIC_LABELS]
+        for i, p in enumerate(picks):
+            # Every row fills the same columns, in the same order, so the window can draw headers.
+            if [m[F_LABEL] for m in p[F_METRICS]] != labels:
+                problems.append(f"picks[{i}].metrics labels must be metric_labels {labels}, "
+                                f"not {[m[F_LABEL] for m in p[F_METRICS]]}")
+    return problems
+
+
+def _preview_problems(rec: Mapping, *, strict: bool, known_values: bool) -> list[str]:
+    """A preview: the picks file's ranked list as of one minute before 09:25 ET."""
+    problems = _unknown_keys(rec, PREVIEW_FIELDS, "") if strict else []
+    when = "a UTC time written YYYY-MM-DDTHH:MM:SSZ" if strict else "an ISO time with an offset"
+    checks = (
+        (F_TRADING_DATE, _is_date_text, "a date written YYYY-MM-DD"),
+        (F_AS_OF, lambda v: _is_time(v, strict=strict), when),
+        (F_PREVIEWED_AT, lambda v: _is_time(v, strict=strict), when),
+        (F_SHADOW, _is_bool, "true or false"),
+        (F_EARNINGS_STATUS, lambda v: _is_state(v, EARNINGS_STATUSES, known_values),
+         f"one of {_one_of(EARNINGS_STATUSES)}"),
+        (F_METRIC_LABELS, _is_metric_labels,
+         f"a list of at most {MAX_METRICS} different labels, each text of 1 to {MAX_TEXT_LEN} characters"),
+        (F_PICKS, lambda v: isinstance(v, list), "a list"),
+    )
+    bad = _field_problems(rec, checks, problems)
+    problems += _rows_problems(rec, bad, strict=strict, known_values=known_values)
+    if strict and F_TRADING_DATE not in bad:
+        day = date.fromisoformat(rec[F_TRADING_DATE])
+        if day.weekday() >= 5:
+            problems.append(f"trading_date {day} is a {_WEEKDAYS[day.weekday()]}, a weekend; "
+                            "previews run on trading days only")
+        if F_AS_OF not in bad:
+            as_of = _parse_time(rec[F_AS_OF])
+            as_of_et = as_of.astimezone(_et())
+            if as_of_et.date() != day:
+                problems.append(f"as_of {rec[F_AS_OF]} is on ET date {as_of_et.date()}, not on trading_date {day}")
+            if as_of_et.second or as_of_et.microsecond:
+                problems.append(f"as_of {rec[F_AS_OF]} must be a whole minute: OV scans the bars before it")
+            if as_of_et.time() >= PREVIEW_BEFORE_ET:
+                problems.append(f"as_of {rec[F_AS_OF]} is {as_of_et:%H:%M:%S} ET; a preview is as of a minute "
+                                f"before {PREVIEW_BEFORE_ET:%H:%M} ET, when the picks freeze")
+            if F_PREVIEWED_AT not in bad and _parse_time(rec[F_PREVIEWED_AT]) < as_of:
+                problems.append(f"previewed_at {rec[F_PREVIEWED_AT]} is before as_of {rec[F_AS_OF]}")
+    return problems + _list_rules(rec, bad)
 
 
 def _twice(values: list) -> list:
@@ -610,6 +688,14 @@ def validate_parity(record: Any) -> list[str]:
     if problems or not isinstance(record, Mapping):
         return problems
     return _parity_problems(record, strict=True, known_values=True)
+
+
+def validate_preview(record: Any) -> list[str]:
+    """Every reason the preview writer would refuse `record`; [] when it would write it."""
+    _, problems = _header_problems(record, KIND_PREVIEW, strict=True)
+    if problems or not isinstance(record, Mapping):
+        return problems
+    return _preview_problems(record, strict=True, known_values=True)
 
 
 def validate_status(record: Any) -> list[str]:
@@ -764,6 +850,27 @@ def write_parity(out_dir: str | os.PathLike, record: Mapping) -> Path:
                             kind=KIND_PARITY, fields=PARITY_FIELDS, name=PARITY_FILE)
 
 
+def write_preview(out_dir: str | os.PathLike, record: Mapping) -> Path:
+    """Replace out/<trading_date>/preview.json, atomically, until the day's picks are frozen.
+
+    `record` holds every field in PREVIEW_FIELDS; schema_version and kind may be left out.
+    Each new preview replaces the last one. Raises ContractError (nothing written) when it
+    breaks a rule, or when the day already has a picks file: from then on the frozen picks
+    are the day's list, and a preview never appears beside them.
+    """
+    problems = validate_preview(record)
+    if problems:
+        raise ContractError("preview record", problems)
+    folder = day_dir(out_dir, record[F_TRADING_DATE])
+    if (folder / PICKS_FILE).exists():
+        raise ContractError("preview record", [f"the picks for {record[F_TRADING_DATE]} are frozen in "
+                                               f"{PICKS_FILE}; a preview comes before the freeze"])
+    rec = _ordered(record, KIND_PREVIEW, PREVIEW_FIELDS)
+    rec[F_METRIC_LABELS] = list(rec[F_METRIC_LABELS])
+    rec[F_PICKS] = [_row(p) for p in rec[F_PICKS]]
+    return _write_replace(folder / PREVIEW_FILE, rec)
+
+
 def record_job_state(out_dir: str | os.PathLike, job: str, state: str, *, at: str,
                      message: str = "", trading_date: str | None = None,
                      next_at: str | None = None) -> dict:
@@ -908,6 +1015,41 @@ def read_day(out_dir: str | os.PathLike, trading_date: date | str) -> dict:
                 view[V_WARNINGS].append(_newer_warning(f"{day}/{file_name}", sub_version))
     view[V_SETTLED_SAME] = view[V_SETTLED_STATE] == SETTLED_SAME
     view[V_SETTLED_DIFF] = view[V_SETTLED_STATE] == SETTLED_DIFF
+    return view
+
+
+def read_preview(out_dir: str | os.PathLike, trading_date: date | str) -> dict:
+    """The day's latest preview, with the reason when there is none. Never raises on a bad file.
+
+    A preview is the ranked list as of a minute before 09:25 ET. It is not the day's picks:
+    once the picks are frozen, read_day is the day's list. Unknown fields are ignored and
+    older schema versions load. Raises ValueError only for a trading_date that is not a date.
+    """
+    day = _date_arg(trading_date)
+    view = {V_HAS_PREVIEW: False, V_REASON_CODE: "", V_REASON: "", V_WARNINGS: [], F_SCHEMA_VERSION: None,
+            F_TRADING_DATE: day, F_AS_OF: None, F_PREVIEWED_AT: None, F_SHADOW: None,
+            F_EARNINGS_STATUS: None, F_METRIC_LABELS: [], F_PICKS: []}
+    rec, version, code, why = _read_record(Path(out_dir) / day / PREVIEW_FILE, KIND_PREVIEW,
+                                           _preview_problems, day)
+    name = f"{day}/{PREVIEW_FILE}"
+    if code:
+        view[V_REASON_CODE] = code
+        view[V_REASON] = {
+            MISSING: f"No OV preview for {day}: {name} is not there. The module writes one each minute "
+                     "from 09:00 to 09:24 ET on trading days.",
+            UNREADABLE: f"No OV preview for {day}: {name} could not be read ({why}). Check the OV picks module.",
+            INVALID: f"No OV preview for {day}: {name} does not match the preview contract ({why}). "
+                     "Check the OV picks module.",
+        }[code]
+        return view
+    view[V_HAS_PREVIEW] = True
+    view[F_SCHEMA_VERSION] = version
+    if version > SCHEMA_VERSION:
+        view[V_WARNINGS].append(_newer_warning(name, version))
+    for key in PREVIEW_FIELDS[2:]:
+        view[key] = rec[key]
+    view[F_METRIC_LABELS] = list(rec[F_METRIC_LABELS])
+    view[F_PICKS] = [_row(p) for p in rec[F_PICKS]]
     return view
 
 

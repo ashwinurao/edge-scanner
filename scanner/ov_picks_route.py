@@ -7,8 +7,8 @@ and SCANNER_NO_PLUGINS=1 would remove the route.
 
 The module's output folder comes from the OV_PICKS_DIR environment variable, read on
 each request. It is mounted read-only into the scanner. The route reads it only through
-the contract readers in ov_picks/contract.py (read_day, read_status) and one folder
-listing, and never writes to it.
+the contract readers in ov_picks/contract.py (read_day, read_preview, read_status) and
+one folder listing, and never writes to it.
 
 The answer always has every key in ROUTE_FIELDS:
 
@@ -27,9 +27,16 @@ The answer always has every key in ROUTE_FIELDS:
   (then a warning says the module's schedule is out of date).
 - day: contract.read_day's view of trading_date, unchanged. Null on a route problem.
 - status: contract.read_status's view, unchanged. Null on a route problem.
+- preview: contract.read_preview's view of today, unchanged, only from 09:00 to 09:25 ET
+  (PREVIEW_FROM to the contract's PREVIEW_BEFORE_ET) on a trading day whose picks are
+  not frozen yet. Null otherwise, so the card shows a preview only in that window and
+  never beside the frozen picks. The owner's every-minute previews (Ash, project thread,
+  2026-11-06): the module's ranked list as of each minute, not frozen. The watchlist and
+  the daily notice come from the frozen picks only (scanner/ov_picks_day.py).
 - in_universe: each row of the day's ranked list mapped to whether the scanner scans it
-  (it is in the startup universe, so it has live bars and setups). Null without picks,
-  or when the scanner has no universe to ask (ticket #20). The universe is built once
+  (it is in the startup universe, so it has live bars and setups); without picks, each
+  row of the preview. Null with neither, or when the scanner has no universe to ask
+  (ticket #20). The universe is built once
   at startup (scripts/run_live.py) and watchlists never add to it, so a name outside it
   gets no live bars and no setups.
 - warnings: route-level warnings. The day's and the status file's own warnings stay
@@ -45,7 +52,7 @@ import importlib
 import logging
 import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Callable, Container, Optional
 from zoneinfo import ZoneInfo
@@ -67,12 +74,15 @@ ERROR = "ERROR"
 
 ROUTE_FIELDS = ("set_up", "reason_code", "reason", "now_et", "today_et", "trading_date",
                 "is_today", "market_closed", "market_note", "next_scan_at", "next_scan_et",
-                "day", "status", "in_universe", "warnings")
+                "day", "status", "preview", "in_universe", "warnings")
 
 _ET = ZoneInfo("America/New_York")
 # Spec "Freeze and restart rules": a first scan may still run until 09:35 ET, ten minutes
 # after its 09:25 slot, so a next-scan time inside that window is not yet overdue.
 _LATE_WINDOW = timedelta(minutes=10)
+# The module previews each minute from 09:00 ET until the 09:25 freeze (ov_picks/CONTRACT.md,
+# "Preview file").
+PREVIEW_FROM = time(9, 0)
 _DAY_NAME = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
@@ -143,7 +153,8 @@ def build_answer(setting: Optional[str], now: datetime,
                 market_closed=closed, market_note=note,
                 next_scan_at=next_at, next_scan_et=next_et,
                 day=contract.read_day(out_dir, served), status=status)
-    body["in_universe"] = _in_universe(body["day"], universe)
+    body["preview"] = _preview(contract, out_dir, body["day"], now_et, served == today and closed is not True)
+    body["in_universe"] = _in_universe(body["day"], body["preview"], universe)
     if warning:
         body["warnings"].append(warning)
     return body
@@ -165,10 +176,27 @@ def _universe(app_state: Any) -> Optional[Container[str]]:
     return states if isinstance(states, dict) and states else None
 
 
-def _in_universe(day: Optional[dict], universe: Optional[Container[str]]) -> Optional[dict]:
-    if universe is None or not day or not day.get("has_picks"):
+def _preview(contract, out_dir: Path, day: dict, now_et: datetime, trading_today: bool) -> Optional[dict]:
+    """Today's preview view, inside the preview window and before the freeze; else None."""
+    before = getattr(contract, "PREVIEW_BEFORE_ET", None)
+    if before is None or not trading_today or day.get("has_picks"):
+        return None   # an older reader has no previews; frozen picks always win
+    if not PREVIEW_FROM <= now_et.time() < before:
         return None
-    return {p["ticker"]: p["ticker"] in universe for p in day["picks"]}
+    return contract.read_preview(out_dir, now_et.date())
+
+
+def _in_universe(day: Optional[dict], preview: Optional[dict],
+                 universe: Optional[Container[str]]) -> Optional[dict]:
+    if universe is None:
+        return None
+    if day and day.get("has_picks"):
+        rows = day["picks"]
+    elif preview and preview.get("has_preview"):
+        rows = preview["picks"]
+    else:
+        return None
+    return {p["ticker"]: p["ticker"] in universe for p in rows}
 
 
 def _load_contract():
