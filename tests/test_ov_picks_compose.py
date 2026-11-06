@@ -110,13 +110,16 @@ def test_ov_picks_has_cpu_and_memory_limits(services):
     assert module["mem_limit"] == "${OV_PICKS_MEMORY:-4g}"
 
 
-def test_ov_picks_gets_only_its_alpaca_keys_and_the_sec_contact(services):
+def test_ov_picks_gets_only_its_alpaca_keys_the_sec_contact_and_its_switches(services):
     module = services["ov-picks"]
     assert "env_file" not in module      # no Schwab or other key from .env reaches it
     assert module["environment"] == {
         "ALPACA_DATA_API_KEY": "${ALPACA_API_KEY:-}",
         "ALPACA_DATA_SECRET_KEY": "${ALPACA_SECRET_KEY:-}",
         "SEC_USER_AGENT": "${SEC_USER_AGENT:-}",
+        # Both switches reach the module, and both default to off.
+        "OV_PICKS_GO_LIVE": "${OV_PICKS_GO_LIVE:-0}",
+        "OV_PICKS_NEW_LISTINGS": "${OV_PICKS_NEW_LISTINGS:-0}",
     }
 
 

@@ -60,6 +60,10 @@ services:
       ALPACA_DATA_API_KEY: ${ALPACA_API_KEY:-}
       ALPACA_DATA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
       SEC_USER_AGENT: ${SEC_USER_AGENT:-}
+      # The module's two switches, both off by default: go-live (off = the shadow run next
+      # to OV) and the weekly new-listing rule. Turning either on is the owner's call.
+      OV_PICKS_GO_LIVE: ${OV_PICKS_GO_LIVE:-0}
+      OV_PICKS_NEW_LISTINGS: ${OV_PICKS_NEW_LISTINGS:-0}
     volumes:
       - ${OV_PICKS_DATA:-./ov-picks-unused/data}:/data
       - ${OV_PICKS_OUT:-./ov-picks-unused/out}:/out
