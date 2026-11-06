@@ -99,6 +99,25 @@ Only Alpaca and Schwab ship, because those are the two that are tested against l
 request adding another is welcome, and should say what was verified: a session of live bars, and a
 history comparison against a provider that is already supported.
 
+## OV picks
+
+This fork shows the picks of a separate, private module, "OV picks" (README, "OV picks"). This
+repo holds only the shared picks-file contract (`ov_picks/contract.py`, `ov_picks/CONTRACT.md`,
+`ov_picks/samples/`), the read-only route and window, the watchlist and notice, and the module's
+opt-in compose service.
+
+- **No OpenVector code or numbers here.** The module's code, the OpenVector code it vendors and
+  OpenVector's parameters live only in the private repo. This repo is public: never copy any of
+  them into it, or into an issue, a PR or a comment. Describe the module in words only.
+- **Protected numbers and vendored code.** OV picks numbers (scoring, gates, universe and
+  allocation) are protected like money logic: a change is its own PR in the module's repo, with a
+  full 2026 replay of how the picks change and the owner's go. The vendored OpenVector code is
+  never edited by hand; it changes only through the module's sync tool (CLAUDE.md).
+- **The contract is paired.** A change to `ov_picks/contract.py`, `ov_picks/CONTRACT.md` or
+  `ov_picks/samples/` needs the same change in the module's repo, in a paired PR. Both repos pin
+  the contract's hash in `tests/test_ov_picks_contract_pin.py`; set the new hash in both. A new
+  schema version only adds fields, and older picks files keep loading ("Saved work survives").
+
 ## Pull requests
 
 - Branch from `main` and keep the change focused.

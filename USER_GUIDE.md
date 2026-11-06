@@ -235,7 +235,7 @@ while dragging to turn off snapping.
 | **Watchlist** | Editable symbol lists with live columns |
 | **Clock** | Eastern time, session phase, market regime, SPY and feed health |
 | **Setup check** | For one symbol, what every setup did over the last few minutes and which condition passed or failed. Use it to answer "why did (or didn't) this alert fire?" |
-| **OV picks** | The OV picks module's four 09:25 ET picks, when `OV_PICKS_DIR` is set: rank, score, earnings label, traded flag and weight, the day's flags, and why there are no picks yet. Display only. See [README: Running on a home server](README.md#running-on-a-home-server) |
+| **OV picks** | The OV picks module's four 09:25 ET picks, when `OV_PICKS_DIR` is set: rank, score, earnings label, traded flag and weight, the day's flags, and why there are no picks yet. Display only. See [The OV picks window](#the-ov-picks-window) |
 
 ### Linking windows
 
@@ -278,6 +278,75 @@ or `NEWS_RSS_SOURCES=` (empty) for Alpaca only.
 
 Two themes ship, a dark default and a light one, under **⋯** in the top bar. Shortcuts: `Ctrl+K` add a window, `Ctrl+L` lock or
 unlock the layout, `Ctrl+,` open Config, `Esc` close menus and dialogs.
+
+### The OV picks window
+
+The **OV picks** window shows the four pre-market picks that the separate OV picks module
+freezes at 09:25 ET each trading day. It needs `OV_PICKS_DIR` set when the scanner starts
+([README: OV picks](README.md#ov-picks)). It is display only: it places no orders. It reads
+`GET /api/v2/ov-picks` every 15 seconds; **Refresh** reads it now. The code is in
+`dashboard-v2/src/windows/ovpicks/`.
+
+**The header** shows the day (for example "Thu 2026-11-05"), when the picks froze ("frozen
+09:25:00 ET"), and these badges:
+
+| Badge | Meaning |
+|---|---|
+| **shadow: checking against OV** | The module is in its shadow run: its picks are still being proved against OpenVector's |
+| **LATE** | The first scan ran between 09:25 and 09:35 ET, not on time |
+| **READY** / **NOT READY** | Whether the module's warmup was ready at the 09:20 ET deadline. Not ready still makes picks |
+| **SETTLED SAME** / **SETTLED DIFF** | The 09:26 ET re-check made the same picks, or bars that came in late for 09:24 would have changed them. The frozen picks always stand |
+
+**The table** has one row per pick, in rank order. Traded rows are marked.
+
+| Column | What |
+|---|---|
+| Rank | 1 to 4 |
+| Ticker | Click it to show the name in the window's linked charts. **no setups** marks a pick outside the scanner's universe: it gets no live bars and no setups, but charts work |
+| Score | The pick's score, two decimals |
+| Earnings | **AMC** (reported after the prior close), **BMO** (reports before this open), a dash for none, or "unavailable" when the module's earnings data is down |
+| Traded | **traded** when the pick is in the module's traded set |
+| Weight | A traded pick's weight, as a percent; a dash when not traded |
+
+The traded flag and the weight are information only.
+
+**Notes under the table**, when they apply:
+
+- the picks are not today's (a weekend or holiday): the window shows the last trading day and
+  when the next scan runs;
+- LATE, with the time the first scan ran;
+- why the warmup was not ready;
+- the earnings data is unavailable, so there is no traded set and no earnings labels;
+- fewer than four names, or none, passed the module's gates;
+- which picks are outside the scanner's universe;
+- the 09:26 re-check: same picks, what would have changed, or not run yet;
+- the check against OpenVector: "matches OV", "differs from OV" with the first difference, "no OV
+  run to compare", or "not run yet. It runs at 10:35 ET";
+- the week's new listings, and a warning from the module's last sector and listing update.
+
+When the day's picks are in the "OV picks" watchlist, the footer says so.
+
+**Without picks**, the window says why:
+
+| Title | When |
+|---|---|
+| No picks yet | A trading day before the picks freeze, or while the scan runs. A line shows the module's warmup: warming up, data ready, ready, not ready with the reason, or failed |
+| Market closed | A weekend, or a holiday the module's schedule shows, and no saved picks to show |
+| No scan today | The module skipped today's scan: a holiday, or it started after 09:35 ET. The window can't tell which |
+| The scan refused to run | For example the module's sector data was too thin. The reason is shown |
+| The scan failed | The module's message is shown |
+| The picks file can't be used | The day's file can't be read or breaks the contract |
+
+It adds "Next scan:" with the time when the module has one.
+
+**Set-up problems** replace the whole window: "OV picks are not set up" (`OV_PICKS_DIR` is not
+set), "This scanner has no OV picks reader" (`ov_picks/contract.py` is missing), "The OV picks
+folder is not there" (the folder is not mounted), or "OV picks could not be read". Each says what
+to do. A failed refresh keeps the last answer and says when it was read. Warnings from the module's
+files are listed at the bottom.
+
+To see the window without the module, run `python scripts/ov_picks_demo.py --sample frozen` (see
+[Scripts Reference](#7-scripts-reference)).
 
 ---
 
@@ -417,6 +486,7 @@ filters more to choose from but costs more CPU per minute and a longer first dow
 | `scripts/compare_universes.py` | Builds two universes and explains every difference |
 | `start_scanner.bat`, `start_scanner.sh` | Launchers for Windows and for macOS / Linux (section 3) |
 | `restart_scanner.bat` | Stops a running scanner and starts it again (Windows) |
+| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`) |
 
 ### build_universe.py
 
