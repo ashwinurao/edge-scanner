@@ -1,6 +1,7 @@
 // fork: OV picks card (ashwinurao/edge-scanner#20). The window's config and the answer of
-// GET /api/v2/ov-picks (scanner/ov_picks_route.py). `day` and `status` are the contract
-// readers' views (ov_picks/CONTRACT.md, "What read_day() returns" and "Status file").
+// GET /api/v2/ov-picks (scanner/ov_picks_route.py). `day`, `preview` and `status` are the
+// contract readers' views (ov_picks/CONTRACT.md, "What read_day() returns", "Preview file"
+// and "Status file").
 import type { WindowBase } from '../../types'
 
 /** Display-only: no settings, no order buttons. */
@@ -61,6 +62,27 @@ export interface OvPicksDay {
   parity_at: string | null
 }
 
+/** The ranked list as of one minute from 09:00 to 09:24 ET, before the picks freeze
+ *  (ov_picks/CONTRACT.md, "Preview file"; Ash, 2026-11-06). Not frozen: it changes each minute. */
+export interface OvPicksPreview {
+  has_preview: boolean
+  /** '' with a preview; MISSING | UNREADABLE | INVALID without */
+  reason_code: string
+  reason: string
+  warnings: string[]
+  schema_version: number | null
+  trading_date: string
+  /** UTC, a whole minute: the bars before this minute */
+  as_of: string | null
+  /** UTC: when the module wrote it */
+  previewed_at: string | null
+  shadow: boolean | null
+  earnings_status: string | null
+  metric_labels: string[]
+  /** the ranked list as of that minute, in rank order; the same rows as the picks */
+  picks: OvPick[]
+}
+
 export interface OvJobEntry {
   state: string
   at: string
@@ -93,7 +115,10 @@ export interface OvPicksAnswer {
   next_scan_et: string | null
   day: OvPicksDay | null
   status: OvPicksStatus | null
-  /** ticker of each row -> scanned by this scanner; null when there are no picks or it can't tell */
+  /** today's preview, from 09:00 to 09:25 ET before the picks freeze; null otherwise */
+  preview: OvPicksPreview | null
+  /** ticker of each row (the preview's, without picks) -> scanned by this scanner; null when
+   *  there are no rows or it can't tell */
   in_universe: Record<string, boolean> | null
   warnings: string[]
 }

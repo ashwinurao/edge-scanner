@@ -305,6 +305,19 @@ def test_while_the_module_warms_up_nothing_is_written_until_the_picks_freeze(tmp
     assert len(d.notices()) == 1
 
 
+def test_the_previews_never_fill_the_watchlist_or_send_the_notice(tmp_path):
+    # The owner's previews (Ash, 2026-11-06): the watchlist and the notice wait for the
+    # frozen picks at 09:25 ET; a preview each minute before then writes nothing here.
+    d = Day(tmp_path, "preview")       # 09:14 ET, the preview as of 09:14, no picks file yet
+    for now in ("2026-11-05 09:00", "2026-11-05 09:14:30", "2026-11-05 09:24:59"):
+        assert d.check(now) == morning.NO_PICKS
+    _assert_nothing_written(d)
+
+    c.write_picks(d.out, _record(DAY, "2026-11-05T14:25:00Z", picks=["EEEE", "AAAA"]))
+    assert d.check("2026-11-05 09:25:03") == morning.SENT
+    assert d.ov_list()["symbols"] == ["EEEE", "AAAA"]     # the frozen picks, not the preview's
+
+
 def test_a_holiday_sends_nothing(tmp_path):
     # Thanksgiving, Thursday 2026-11-26: Wednesday's picks are there, and the module's
     # calendar puts the next scan on Friday. Nothing is for today.

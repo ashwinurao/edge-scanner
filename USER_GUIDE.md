@@ -235,7 +235,7 @@ while dragging to turn off snapping.
 | **Watchlist** | Editable symbol lists with live columns |
 | **Clock** | Eastern time, session phase, market regime, SPY and feed health |
 | **Setup check** | For one symbol, what every setup did over the last few minutes and which condition passed or failed. Use it to answer "why did (or didn't) this alert fire?" |
-| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, each row's full details on a click, the day's flags, and why there are no picks yet. Display only. See [The OV picks window](#the-ov-picks-window) |
+| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, each row's full details on a click, the day's flags, and why there are no picks yet. From 09:00 to 09:25 ET, a preview of the list as of the latest minute. Display only. See [The OV picks window](#the-ov-picks-window) |
 
 ### Linking windows
 
@@ -334,11 +334,22 @@ it. One row is open at a time.
 When the day's top picks are in the "OV picks" watchlist, the footer says so. The watchlist
 holds the top picks only; the rest of the list stays in this window.
 
-**Without picks**, the window says why:
+**The preview, from 09:00 to 09:25 ET.** Before the picks freeze, the module previews the
+ranked list each minute from 09:00 to 09:24 ET, so the top contenders show early and there is
+time to read why they rank there (the owner's request, 2026-11-06). While there is no frozen
+list, the window shows the latest preview in the same table, with the same columns, badges and
+row details. The header says "preview as of 09:14 ET" (the bars before that minute) and has a
+**PREVIEW: not frozen** badge. The notes say when the preview is from, that a new one comes each
+minute, and that the "OV picks" watchlist and the notice wait for the frozen picks; a preview more
+than 2 minutes old says no newer one has come, with the module's reason when it gave one. At 09:25
+ET the window shows nothing from the preview again; once the picks freeze, it shows them. A row you
+opened stays open from one preview to the next.
+
+**Without picks** (and without a preview), the window says why:
 
 | Title | When |
 |---|---|
-| No picks yet | A trading day before the picks freeze, or while the scan runs. A line shows the module's warmup: warming up, data ready, ready, not ready with the reason, or failed |
+| No picks yet | A trading day before the picks freeze, or while the scan runs. A line shows the module's warmup: warming up, data ready, ready, not ready with the reason, or failed. From 09:00 to 09:25 ET a line also says why there is no preview: none yet, or the module's reason (for example the warmup did not get its data ready) |
 | Market closed | A weekend, or a holiday the module's schedule shows, and no saved picks to show |
 | No scan today | The module skipped today's scan: a holiday, or it started after 09:35 ET. The window can't tell which |
 | The scan refused to run | For example the module's sector data was too thin. The reason is shown |
@@ -353,7 +364,8 @@ folder is not there" (the folder is not mounted), or "OV picks could not be read
 to do. A failed refresh keeps the last answer and says when it was read. Warnings from the module's
 files are listed at the bottom.
 
-To see the window without the module, run `python scripts/ov_picks_demo.py --sample frozen` (see
+To see the window without the module, run `python scripts/ov_picks_demo.py --sample frozen`, or
+`--sample preview --at "2026-11-05 09:14:30"` for a preview (see
 [Scripts Reference](#7-scripts-reference)).
 
 ---
@@ -494,7 +506,7 @@ filters more to choose from but costs more CPU per minute and a longer first dow
 | `scripts/compare_universes.py` | Builds two universes and explains every difference |
 | `start_scanner.bat`, `start_scanner.sh` | Launchers for Windows and for macOS / Linux (section 3) |
 | `restart_scanner.bat` | Stops a running scanner and starts it again (Windows) |
-| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`) |
+| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`; a preview: `--sample preview --at "2026-11-05 09:14:30"`) |
 
 ### build_universe.py
 

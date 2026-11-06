@@ -80,10 +80,12 @@ def _write_json(path, obj):
 # ---------------------------------------------------------------- schema constants
 
 def test_every_job_has_its_spec_result_states_plus_the_common_ones():
-    # Spec "Runner", daily schedule table: the result state of each job.
+    # Spec "Runner", daily schedule table: the result state of each job. The preview job is
+    # the owner's addition (Ash, 2026-11-06: a preview each minute from 09:00 ET).
     spec = {
         c.JOB_NIGHTLY: {"NIGHTLY_OK", "NIGHTLY_WARN"},
         c.JOB_WARMUP: {"WARMING", "DATA_READY", "READY", "NOT_READY"},
+        c.JOB_PREVIEW: {"PREVIEWED"},
         c.JOB_SCAN: {"PICKS_FROZEN"},
         c.JOB_SETTLE: {"SETTLED_SAME", "SETTLED_DIFF"},
         c.JOB_COMPARE: {"PARITY_MATCH", "PARITY_DIFF", "PARITY_NO_OV_RUN"},
@@ -91,6 +93,8 @@ def test_every_job_has_its_spec_result_states_plus_the_common_ones():
         c.JOB_REFERENCE: {"REF_OK", "REF_WARN"},
     }
     assert set(c.JOBS) == set(spec) == set(c.JOB_STATES)
+    # The status file lists the jobs in schedule order.
+    assert c.JOBS == ("nightly", "warmup", "preview", "scan", "settle", "compare", "archive", "reference")
     for job, states in spec.items():
         assert set(c.JOB_STATES[job]) == states | {"RUNNING", "SKIPPED", "REFUSED", "FAILED"}, job
     assert c.DAY_STATES == ("WARMING", "DATA_READY", "READY", "NOT_READY",
@@ -100,13 +104,13 @@ def test_every_job_has_its_spec_result_states_plus_the_common_ones():
 def test_contract_doc_names_every_field_and_state():
     doc = (ROOT / "ov_picks" / "CONTRACT.md").read_text(encoding="utf-8")
     names = (set(c.PICKS_FIELDS) | set(c.PICK_FIELDS) | set(c.ENTRY_FIELDS) | set(c.SETTLED_FIELDS)
-             | set(c.PARITY_FIELDS) | set(c.STATUS_FIELDS) | set(c.STATUS_ENTRY_FIELDS)
-             | set(c.VIEW_FIELDS) | set(c.STATUS_VIEW_FIELDS) | set(c.JOBS)
+             | set(c.PARITY_FIELDS) | set(c.PREVIEW_FIELDS) | set(c.STATUS_FIELDS) | set(c.STATUS_ENTRY_FIELDS)
+             | set(c.VIEW_FIELDS) | set(c.PREVIEW_VIEW_FIELDS) | set(c.STATUS_VIEW_FIELDS) | set(c.JOBS)
              | {s for states in c.JOB_STATES.values() for s in states}
              | set(c.EARNINGS_STATUSES) | set(c.EARNINGS_LABELS)
              | {c.PENDING, c.UNREADABLE, c.MISSING, c.INVALID}
-             | {c.PICKS_FILE, c.SETTLED_FILE, c.PARITY_FILE, c.STATUS_FILE}
-             | {c.KIND_PICKS, c.KIND_SETTLED, c.KIND_PARITY, c.KIND_STATUS}
+             | {c.PICKS_FILE, c.SETTLED_FILE, c.PARITY_FILE, c.PREVIEW_FILE, c.STATUS_FILE}
+             | {c.KIND_PICKS, c.KIND_SETTLED, c.KIND_PARITY, c.KIND_PREVIEW, c.KIND_STATUS}
              | {"MAX_PICKS", "MAX_ROWS", "MAX_METRICS", "MAX_DETAILS", "MAX_TEXT_LEN", "MAX_FILE_BYTES"})
     missing = sorted(n for n in names if f"`{n}`" not in doc)
     assert missing == []
@@ -563,6 +567,139 @@ def test_read_day_takes_a_date_object(tmp_path):
     assert c.read_day(tmp_path, date(2026, 11, 5))["has_picks"] is True
 
 
+# ---------------------------------------------------------------- preview file
+# The owner's every-minute previews (Ash, 2026-11-06): the ranked list as of each minute
+# from 09:00 ET, replaced each minute, until the picks freeze at 09:25 ET.
+
+AS_OF = "2026-11-05T14:14:00Z"          # 09:14:00 ET (EST, UTC-5): bars through 09:13
+
+
+def _preview(**over):
+    rec = {
+        "trading_date": DAY,
+        "as_of": AS_OF,
+        "previewed_at": "2026-11-05T14:14:21Z",
+        "shadow": True,
+        "earnings_status": c.EARNINGS_AVAILABLE,
+        "metric_labels": list(LABELS),
+        "picks": _rows(),
+    }
+    rec.update(over)
+    return rec
+
+
+def test_a_written_preview_reads_back_with_the_picks_files_rows(tmp_path):
+    path = c.write_preview(tmp_path, _preview())
+
+    assert path == tmp_path / DAY / c.PREVIEW_FILE
+    on_disk = json.loads(path.read_text(encoding="utf-8"))
+    assert list(on_disk) == list(c.PREVIEW_FIELDS)
+    assert on_disk["kind"] == c.KIND_PREVIEW
+    view = c.read_preview(tmp_path, DAY)
+    assert list(view) == list(c.PREVIEW_VIEW_FIELDS)
+    assert view["has_preview"] is True and view["reason_code"] == "" and view["warnings"] == []
+    assert (view["as_of"], view["previewed_at"], view["shadow"]) == (AS_OF, "2026-11-05T14:14:21Z", True)
+    # The same rows and metrics as a picks file (owner, 2026-11-06).
+    assert view["picks"] == _rows() and view["metric_labels"] == LABELS
+    # A preview is not the day's picks.
+    assert c.read_day(tmp_path, DAY)["has_picks"] is False
+
+
+def test_each_preview_replaces_the_last_one(tmp_path):
+    c.write_preview(tmp_path, _preview())
+    c.write_preview(tmp_path, _preview(as_of="2026-11-05T14:15:00Z", previewed_at="2026-11-05T14:15:19Z",
+                                       picks=_rows(3)))
+
+    view = c.read_preview(tmp_path, DAY)
+    assert view["as_of"] == "2026-11-05T14:15:00Z"
+    assert [p["ticker"] for p in view["picks"]] == TICKERS[:3]
+    assert sorted(p.name for p in (tmp_path / DAY).iterdir()) == [c.PREVIEW_FILE]
+
+
+def test_no_preview_is_written_once_the_picks_are_frozen(tmp_path):
+    c.write_preview(tmp_path, _preview())
+    c.write_picks(tmp_path, _record())
+
+    with pytest.raises(c.ContractError, match="frozen"):
+        c.write_preview(tmp_path, _preview(as_of="2026-11-05T14:24:00Z", previewed_at="2026-11-05T14:24:30Z"))
+    # The last preview before the freeze stays as it was.
+    assert c.read_preview(tmp_path, DAY)["as_of"] == AS_OF
+
+
+@pytest.mark.parametrize("over, problem", [
+    ({"as_of": "2026-11-05T14:25:00Z", "previewed_at": "2026-11-05T14:25:10Z"}, "when the picks freeze"),
+    ({"as_of": "2026-11-05T15:00:00Z", "previewed_at": "2026-11-05T15:00:10Z"}, "when the picks freeze"),
+    ({"as_of": "2026-11-05T14:14:30Z"}, "whole minute"),
+    ({"as_of": "2026-11-06T14:14:00Z", "previewed_at": "2026-11-06T14:14:21Z"}, "not on trading_date"),
+    ({"previewed_at": "2026-11-05T14:13:59Z"}, "before as_of"),
+    ({"trading_date": "2026-11-07", "as_of": "2026-11-07T14:14:00Z",
+      "previewed_at": "2026-11-07T14:14:21Z"}, "weekend"),
+    ({"as_of": "2026-11-05 14:14:00"}, "as_of must be"),
+    ({"shadow": "yes"}, "shadow must be"),
+    ({"earnings_status": "maybe"}, "earnings_status must be"),
+    ({"picks": [_pick(1, "AAAA", top=False), _pick(2, "BBBB", top=True)]}, "come first"),
+    ({"picks": [_pick(1, "AAAA"), _pick(1, "BBBB")]}, "rank order"),
+    ({"earnings_status": c.EARNINGS_UNAVAILABLE, "picks": [_pick(1, "AAAA", label="AMC")]}, "earnings_label"),
+    ({"metric_labels": ["Price"]}, "metric_labels"),
+    ({"frozen_at": FROZEN_AT}, "not a field"),
+])
+def test_the_preview_writer_refuses_a_record_that_breaks_a_rule(tmp_path, over, problem):
+    with pytest.raises(c.ContractError, match=problem):
+        c.write_preview(tmp_path, _preview(**over))
+    assert not (tmp_path / DAY).exists() or not (tmp_path / DAY / c.PREVIEW_FILE).exists()
+
+
+@pytest.mark.parametrize("over", [
+    {"as_of": "2026-11-05T14:00:00Z", "previewed_at": "2026-11-05T14:00:00Z"},    # 09:00 ET, written at once
+    {"as_of": "2026-11-05T14:24:00Z", "previewed_at": "2026-11-05T14:25:40Z"},    # the last minute, written late
+    {"picks": []},
+    {"earnings_status": c.EARNINGS_UNAVAILABLE, "picks": _rows()},
+])
+def test_the_preview_writer_accepts_the_same_rules_where_they_must_not_fire(tmp_path, over):
+    assert c.validate_preview(_preview(**over)) == []
+    c.write_preview(tmp_path, _preview(**over))
+
+
+def test_a_missing_or_bad_preview_reads_as_no_preview(tmp_path):
+    view = c.read_preview(tmp_path, DAY)
+    assert (view["has_preview"], view["reason_code"]) == (False, c.MISSING)
+    assert list(view) == list(c.PREVIEW_VIEW_FIELDS) and view["picks"] == []
+
+    _write_json(tmp_path / DAY / c.PREVIEW_FILE, {"schema_version": 1, "kind": c.KIND_PICKS})
+    view = c.read_preview(tmp_path, DAY)
+    assert (view["has_preview"], view["reason_code"]) == (False, c.INVALID)
+
+    (tmp_path / DAY / c.PREVIEW_FILE).write_text("{not json", encoding="utf-8")
+    view = c.read_preview(tmp_path, DAY)
+    assert (view["has_preview"], view["reason_code"]) == (False, c.UNREADABLE)
+    assert "Check the OV picks module" in view["reason"]
+
+
+def test_the_preview_reader_ignores_unknown_fields_and_reads_a_newer_version(tmp_path):
+    rec = {"schema_version": 2, "kind": c.KIND_PREVIEW, **_preview(), "new_field": 1}
+    _write_json(tmp_path / DAY / c.PREVIEW_FILE, rec)
+
+    view = c.read_preview(tmp_path, DAY)
+    assert view["has_preview"] is True and "new_field" not in view
+    assert len(view["warnings"]) == 1 and "schema version 2" in view["warnings"][0]
+
+
+def test_a_preview_in_another_days_folder_is_refused_on_read(tmp_path):
+    _write_json(tmp_path / "2026-11-06" / c.PREVIEW_FILE, {"schema_version": 1, "kind": c.KIND_PREVIEW, **_preview()})
+    view = c.read_preview(tmp_path, "2026-11-06")
+    assert (view["has_preview"], view["reason_code"]) == (False, c.INVALID)
+    assert "folder for 2026-11-06" in view["reason"]
+
+
+def test_the_preview_job_has_a_status_entry_like_any_job(tmp_path):
+    c.record_job_state(tmp_path, c.JOB_SCAN, c.PICKS_FROZEN, at="2026-11-04T14:25:00Z", trading_date="2026-11-04")
+    c.record_job_state(tmp_path, c.JOB_PREVIEW, c.PREVIEWED, at="2026-11-05T14:14:21Z", trading_date=DAY,
+                       message="Preview as of 09:14 ET.", next_at="2026-11-05T14:15:00Z")
+    jobs = c.read_status(tmp_path)["jobs"]
+    assert list(jobs) == [c.JOB_PREVIEW, c.JOB_SCAN]
+    assert jobs[c.JOB_PREVIEW]["state"] == c.PREVIEWED
+
+
 # ---------------------------------------------------------------- status file
 
 def test_each_job_keeps_its_own_last_entry(tmp_path):
@@ -681,7 +818,10 @@ SAMPLE_CASES = {
     "settled_diff": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.SETTLED_DIFF, c.PENDING),
     "older_schema": (True, False, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.PENDING, c.PENDING),
     "warming": (False, None, None, None, None, [], 0, None, None),
+    "preview": (False, None, None, None, None, [], 0, None, None),
 }
+# The warmup state of each sample without picks: still warming, or ready with a preview showing.
+NO_PICKS_WARMUP = {"warming": c.WARMING, "preview": c.DATA_READY}
 
 
 def test_the_sample_folders_are_the_documented_set():
@@ -696,11 +836,12 @@ def test_every_sample_passes_the_writers_own_check(case):
     for path in sorted(folder.rglob("*.json")):
         rec = json.loads(path.read_text(encoding="utf-8"))
         check = {c.PICKS_FILE: c.validate_picks, c.SETTLED_FILE: c.validate_settled,
-                 c.PARITY_FILE: c.validate_parity, c.STATUS_FILE: c.validate_status}[path.name]
+                 c.PARITY_FILE: c.validate_parity, c.PREVIEW_FILE: c.validate_preview,
+                 c.STATUS_FILE: c.validate_status}[path.name]
         assert check(rec) == [], path
     for path in folder.rglob("*"):
         assert path.is_dir() or path.name in (c.PICKS_FILE, c.SETTLED_FILE, c.PARITY_FILE,
-                                              c.STATUS_FILE), path
+                                              c.PREVIEW_FILE, c.STATUS_FILE), path
         assert path.is_dir() or path.parent.name in (case, DAY), path
 
 
@@ -736,9 +877,9 @@ def test_every_sample_has_a_status_file_for_the_same_day(case):
     assert status["has_status"] is True and status["warnings"] == []
     nightly = status["jobs"][c.JOB_NIGHTLY]
     assert (nightly["state"], nightly["trading_date"]) == (c.NIGHTLY_OK, DAY)
-    expected_warmup = c.WARMING if case == "warming" else SAMPLE_CASES[case][3]
+    expected_warmup = NO_PICKS_WARMUP.get(case, SAMPLE_CASES[case][3])
     assert status["jobs"][c.JOB_WARMUP]["state"] == expected_warmup
-    if case != "warming":
+    if case not in NO_PICKS_WARMUP:
         assert status["jobs"][c.JOB_SCAN]["state"] == c.PICKS_FROZEN
         assert status["jobs"][c.JOB_SCAN]["trading_date"] == DAY
 
@@ -756,3 +897,16 @@ def test_the_samples_show_a_ranked_list_and_an_earnings_day():
     # earnings_unavailable: no labels at all.
     view = c.read_day(SAMPLES / "earnings_unavailable", DAY)
     assert [p["earnings_label"] for p in view["picks"]] == [None] * 6
+
+
+def test_the_preview_sample_shows_the_ranked_list_before_the_freeze():
+    view = c.read_preview(SAMPLES / "preview", DAY)
+    assert view["has_preview"] is True and view["warnings"] == []
+    assert view["as_of"] == AS_OF
+    assert [p["ticker"] for p in view["picks"] if p["top"]] == TOP
+    assert [p["rank"] for p in view["picks"]] == list(range(1, 7))
+    entry = c.read_status(SAMPLES / "preview")["jobs"][c.JOB_PREVIEW]
+    assert (entry["state"], entry["trading_date"]) == (c.PREVIEWED, DAY)
+    # No other sample has a preview: each is after the freeze, or before 09:00 ET.
+    for case in set(SAMPLE_CASES) - {"preview"}:
+        assert c.read_preview(SAMPLES / case, DAY)["reason_code"] == c.MISSING, case
