@@ -27,11 +27,11 @@ The answer always has every key in ROUTE_FIELDS:
   (then a warning says the module's schedule is out of date).
 - day: contract.read_day's view of trading_date, unchanged. Null on a route problem.
 - status: contract.read_status's view, unchanged. Null on a route problem.
-- in_universe: each of the day's picks mapped to whether the scanner scans it (it is
-  in the startup universe, so it has live bars and setups). Null without picks, or when
-  the scanner has no universe to ask (ticket #20). The universe is built once at
-  startup (scripts/run_live.py) and watchlists never add to it, so a pick outside it gets no
-  live bars and no setups.
+- in_universe: each row of the day's ranked list mapped to whether the scanner scans it
+  (it is in the startup universe, so it has live bars and setups). Null without picks,
+  or when the scanner has no universe to ask (ticket #20). The universe is built once
+  at startup (scripts/run_live.py) and watchlists never add to it, so a name outside it
+  gets no live bars and no setups.
 - warnings: route-level warnings. The day's and the status file's own warnings stay
   inside those views.
 

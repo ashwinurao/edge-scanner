@@ -17,11 +17,14 @@ One check does this, in order:
    picks file for today means nothing to do: the module is still warming up, the market
    is closed (a holiday or a weekend), the scan was skipped, or the file breaks the
    contract. The card says which.
-3. Upsert the "OV picks" watchlist (id WATCHLIST_ID) with the day's names in rank order,
-   through the dashboard's own WatchlistStore (app_state.v2.watchlists), so its lock
-   covers both writers.
-4. Publish one notice on the alert feed (FeedHub.publish, source "custom"). Not on a day
-   with no names, and not after NOTICE_UNTIL_ET: a "ready" notice after the close is noise.
+3. Upsert the "OV picks" watchlist (id WATCHLIST_ID) with the day's top picks (the rows
+   marked `top`) in rank order, through the dashboard's own WatchlistStore
+   (app_state.v2.watchlists), so its lock covers both writers. The rest of the ranked
+   list stays in the OV picks window: the owner picks and sizes from it by hand (Ash,
+   2026-11-06), so it is not a watchlist.
+4. Publish one notice on the alert feed (FeedHub.publish, source "custom") that lists the
+   top picks. Not on a day with no top picks, and not after NOTICE_UNTIL_ET: a "ready"
+   notice after the close is noise.
 5. Write today's marker. A crash between 4 and 5 repeats the notice once after the
    restart, which is safer than missing it.
 
@@ -29,7 +32,7 @@ The marker lives in the scanner's own data/ folder. The module's output folder i
 read-only and only the module writes it.
 
 The notice uses the existing alert fields with their existing meaning and adds
-`notice`, `trading_date`, `frozen_at` and `picks`. Nothing reads it as a setup alert:
+`notice`, `trading_date`, `frozen_at` and `picks` (the top picks). Nothing reads it as a setup alert:
 it has no price, score 0 and direction "neutral".
 """
 from __future__ import annotations
@@ -106,7 +109,8 @@ class MorningPicks:
         day = contract.read_day(self.out_dir, today)
         if not day["has_picks"]:
             return NO_PICKS
-        tickers = [p["ticker"] for p in sorted(day["picks"], key=lambda p: p["rank"])]
+        # The top picks only, in rank order; the contract keeps them first (ov_picks/CONTRACT.md).
+        tickers = [p["ticker"] for p in sorted(day["picks"], key=lambda p: p["rank"]) if p["top"]]
 
         self._upsert_watchlist(tickers, now_et)
         seq = None
@@ -121,7 +125,7 @@ class MorningPicks:
     def _upsert_watchlist(self, tickers: list[str], now_et: datetime) -> None:
         existing = next((w for w in self.watchlists.load_all() if w.get("id") == WATCHLIST_ID), {})
         rec = dict(existing)
-        # Keep a name the trader gave the list; the names in it are the day's picks only.
+        # Keep a name the trader gave the list; the names in it are the day's top picks only.
         rec.update(id=WATCHLIST_ID, name=existing.get("name") or WATCHLIST_NAME, symbols=tickers,
                    updatedAt=_utc_text(now_et))
         self.watchlists.save(rec)
@@ -161,7 +165,8 @@ class MorningPicks:
 
 
 def notice_record(day: dict, tickers: list[str], contract: Any) -> dict:
-    """The one alert-feed record for the day. `day` is contract.read_day's view with picks."""
+    """The one alert-feed record for the day. `day` is contract.read_day's view with picks,
+    and `tickers` are its top picks in rank order."""
     frozen = datetime.fromisoformat(day["frozen_at"].replace("Z", "+00:00"))
     flags = []
     if day["late"]:
@@ -171,10 +176,10 @@ def notice_record(day: dict, tickers: list[str], contract: Any) -> dict:
     if day["warmup_state"] == contract.NOT_READY:
         flags.append("warmup not ready")
     if day["earnings_status"] != contract.EARNINGS_AVAILABLE:
-        flags.append("earnings unavailable, no traded set")
+        flags.append("earnings unavailable")
     label = f"OV picks ready: {', '.join(tickers)}" + (f" ({'; '.join(flags)})" if flags else "")
     return {
-        # Rank 1, so a click on the row links a real chart, never a made-up symbol.
+        # The first top pick, so a click on the row links a real chart, never a made-up symbol.
         "symbol": tickers[0],
         "direction": "neutral",
         # Alerts are stamped with the START of their bar and the Scanner window shows the

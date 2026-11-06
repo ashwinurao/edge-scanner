@@ -87,13 +87,18 @@ class Day:
                 for line in p.read_text().splitlines()]
 
 
-def _record(day, frozen_at, picks=None, **over):
+def _record(day, frozen_at, picks=None, top=None, **over):
+    """A picks record whose ranked list is `picks` (NAMES by default), the first `top` of
+    them marked top (all of them by default)."""
     names = NAMES if picks is None else picks
+    top = len(names) if top is None else top
     rec = {
         "trading_date": day, "frozen_at": frozen_at, "warmup_state": c.READY, "warmup_reason": "",
         "late": False, "shadow": False, "earnings_status": c.EARNINGS_AVAILABLE,
-        "picks": [{"rank": i + 1, "ticker": t, "score": 90.0 - i, "earnings_label": None,
-                   "traded": True, "weight": 1 / len(names)} for i, t in enumerate(names)],
+        "metric_labels": ["Score"],
+        "picks": [{"rank": i + 1, "ticker": t, "score": 90.0 - i, "status": "PICK" if i < top else "WATCH",
+                   "top": i < top, "earnings_label": None, "metrics": [{"label": "Score", "value": 90.0 - i}],
+                   "details": [{"label": "Ticker", "value": t}]} for i, t in enumerate(names)],
         "reference_state": c.REF_OK, "reference_promoted": [],
     }
     rec.update(over)
@@ -102,8 +107,9 @@ def _record(day, frozen_at, picks=None, **over):
 
 # ---------------------------------------------------------------- the watchlist upsert
 
-def test_the_watchlist_gets_the_days_four_names_in_rank_order(tmp_path):
+def test_the_watchlist_gets_the_days_four_top_picks_in_rank_order(tmp_path):
     d = Day(tmp_path, "frozen")
+    assert len(c.read_day(d.out, DAY)["picks"]) == 10     # four top picks, six more ranked rows
 
     assert d.check("2026-11-05 09:25:05") == morning.SENT
 
@@ -128,8 +134,33 @@ def test_the_upsert_replaces_yesterdays_names_and_leaves_other_lists_alone(tmp_p
     assert (lists["ov-picks"]["name"], lists["ov-picks"]["symbols"]) == ("OV morning", NAMES)
 
 
+def test_the_rows_below_the_top_picks_stay_off_the_watchlist_and_the_notice(tmp_path):
+    # The owner picks and sizes from the ranked list by hand (Ash, 2026-11-06); the
+    # watchlist and the notice carry the top picks only.
+    d = Day(tmp_path)
+    c.write_picks(d.out, _record(DAY, "2026-11-05T14:25:00Z", picks=["EEEE", "AAAA", "FFFF", "BBBB"], top=2))
+
+    assert d.check("2026-11-05 09:25:05") == morning.SENT
+
+    assert d.ov_list()["symbols"] == ["EEEE", "AAAA"]
+    [n] = d.notices()
+    assert (n["setup_label"], n["symbol"], n["picks"]) == ("OV picks ready: EEEE, AAAA", "EEEE", ["EEEE", "AAAA"])
+    assert json.loads(d.marker.read_text())["symbols"] == ["EEEE", "AAAA"]
+
+
+def test_a_ranked_list_with_no_top_picks_clears_the_list_and_sends_no_notice(tmp_path):
+    d = Day(tmp_path)
+    c.write_picks(d.out, _record(DAY, "2026-11-05T14:25:00Z", picks=["EEEE", "FFFF"], top=0))
+    d.watchlists.save({"id": "ov-picks", "name": "OV picks", "symbols": ["OLD1"], "updatedAt": "x"})
+
+    assert d.check("2026-11-05 09:25:05") == morning.WATCHLIST_ONLY
+
+    assert d.ov_list()["symbols"] == []
+    assert d.notices() == []
+
+
 def test_a_day_with_no_names_clears_the_list_and_sends_no_notice(tmp_path):
-    # The contract allows 0 to 4 picks: fewer when fewer names pass OV's gates.
+    # The contract allows an empty list: no name passed OV's gates.
     d = Day(tmp_path)
     c.write_picks(d.out, _record(DAY, "2026-11-05T14:25:00Z", picks=[]))
     d.watchlists.save({"id": "ov-picks", "name": "OV picks", "symbols": ["OLD1"], "updatedAt": "x"})
@@ -222,11 +253,11 @@ def test_a_late_day_says_late_and_shows_its_freeze_time(tmp_path):
     assert n["timestamp"] == "2026-11-05T09:30:12-05:00"
 
 
-def test_earnings_unavailable_still_lists_the_names_but_claims_no_traded_set(tmp_path):
+def test_earnings_unavailable_still_lists_the_top_picks_and_says_so(tmp_path):
     d = Day(tmp_path, "earnings_unavailable")
     assert d.check("2026-11-05 09:25:05") == morning.SENT
     [n] = d.notices()
-    assert n["setup_label"] == "OV picks ready: AAAA, BBBB, CCCC, DDDD (earnings unavailable, no traded set)"
+    assert n["setup_label"] == "OV picks ready: AAAA, BBBB, CCCC, DDDD (earnings unavailable)"
     assert n["picks"] == NAMES
     assert d.ov_list()["symbols"] == NAMES
 
@@ -234,7 +265,7 @@ def test_earnings_unavailable_still_lists_the_names_but_claims_no_traded_set(tmp
 @pytest.mark.parametrize("sample, label", [
     ("shadow", "OV picks ready: AAAA, BBBB, CCCC, DDDD (shadow: checking against OV)"),
     ("not_ready", "OV picks ready: AAAA, BBBB, CCCC, DDDD (warmup not ready)"),
-    # An earnings day: the notice names all four, not only the traded two.
+    # An earnings day: the notice names the four top picks; the labels show in the window.
     ("parity_match", "OV picks ready: AAAA, BBBB, CCCC, DDDD (shadow: checking against OV)"),
 ])
 def test_the_notice_carries_the_days_flags(tmp_path, sample, label):
@@ -310,7 +341,7 @@ def test_a_picks_file_that_breaks_the_contract_sends_nothing(tmp_path):
     d = Day(tmp_path)
     (d.out / DAY).mkdir()
     bad = _record(DAY, "2026-11-05T14:25:00Z")
-    bad["picks"][0]["weight"] = 0.9                    # traded weights no longer sum to 1
+    bad["picks"][0]["top"] = False                     # the top picks no longer come first
     (d.out / DAY / c.PICKS_FILE).write_text(json.dumps({"schema_version": 1, "kind": c.KIND_PICKS, **bad}))
     assert c.read_day(d.out, DAY)["reason_code"] == c.INVALID
     assert d.check("2026-11-05 09:25:05") == morning.NO_PICKS
