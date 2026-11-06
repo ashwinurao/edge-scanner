@@ -27,7 +27,7 @@ out/                          the module's output folder (mounted read-only into
 - `status.json` (`STATUS_FILE`) is rewritten atomically each time a job records a state.
   It assumes one writer process at a time. Two processes writing it at once can lose one
   entry until that job writes again.
-- The runner also writes OV's full 350-row results and its summary into the day folder,
+- The runner also writes OV's full results and its summary into the day folder,
   under names it owns. They are not part of this contract, and Edge Scanner does not read
   them.
 - Every file is UTF-8 JSON with `schema_version` and `kind`. NaN and Infinity are never
@@ -51,7 +51,7 @@ allowed), `ticker` is upper-case text with no spaces, at most 16 characters.
 | `warmup_reason` | text | Why the warmup was `NOT_READY`; must not be blank then. May be empty for `READY`. |
 | `late` | true/false | The first scan ran between 09:25 and 09:35 ET (spec US12). |
 | `shadow` | true/false | The shadow run is on: the card says "shadow: checking against OV" (spec US14). |
-| `earnings_status` | text | OV's earnings data status, verbatim: `available`, `unavailable` or `missing_prior_session_context` (`ov_engine/earnings.py:204-247` at OV `c700b18`). |
+| `earnings_status` | text | OV's earnings data status, verbatim: `available`, `unavailable` or `missing_prior_session_context`. |
 | `picks` | list | 0 to 4 picks (`MAX_PICKS`, OV's `MAX_PREMARKET_CANDIDATES`), ranked 1 to n in order, each ticker once. Fewer than 4 when fewer names pass OV's gates. |
 | `reference_state` | text or null | The last reference update before this day: `REF_OK`, `REF_WARN`, or null when none ran (the shadow run keeps the updaters off). |
 | `reference_promoted` | list of tickers | The names the new-listing rule promoted that week, each once. Empty when `reference_state` is null. |
@@ -63,7 +63,7 @@ Each pick:
 | `rank` | whole number | 1 to 4. OV's `rank` column. |
 | `ticker` | ticker | OV's `ticker` column, upper-cased and stripped. |
 | `score` | number | OV's `ov_score` column. Finite. |
-| `earnings_label` | text or null | `AMC` (reported after the prior close), `BMO` (reports before this open) or null. OV's `earnings_release_timing` column (`ov_engine/earnings.py:152-153`). |
+| `earnings_label` | text or null | `AMC` (reported after the prior close), `BMO` (reports before this open) or null. OV's earnings release timing. |
 | `traded` | true/false | In OV's traded set: its `allocation_selected` column. |
 | `weight` | number | OV's `allocation_sizing_normalized_weight`: 0 to 1, 0 when not traded. |
 
@@ -192,7 +192,7 @@ checks that each one still passes the writer's checks and reads as described.
 
 | Folder | What it shows |
 |---|---|
-| `frozen` | On-time picks after go-live. CCCC is high-ATR, so the weights are 1, 1, 0.1 and 1 over 3.1. One name promoted. No settled or parity record yet. |
+| `frozen` | On-time picks after go-live. All four are traded, with unequal weights 0.4, 0.3, 0.2 and 0.1. The numbers only show the format. One name promoted. No settled or parity record yet. |
 | `shadow` | The shadow run: `shadow` true, no reference update, the 09:26 re-check the same. |
 | `late` | A first scan at 09:31 ET, marked `late`. |
 | `not_ready` | Warmup `NOT_READY` at the deadline, with the reason; picks made anyway. |

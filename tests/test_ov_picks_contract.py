@@ -18,8 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "ov_picks" / "samples"
 DAY = "2026-11-05"                      # a Thursday, after the 2026-11-01 DST change
 FROZEN_AT = "2026-11-05T14:25:00Z"      # 09:25:00 ET (EST, UTC-5)
-HIGH = 1 / 3.1                          # OV's high-ATR sizing: raw 1.0, 1.0, 0.1, 1.0 over fsum 3.1
-LOW = 0.1 / 3.1
+UNEQUAL = (0.4, 0.3, 0.2, 0.1)          # unequal traded weights; the numbers only show the format
 
 
 @pytest.fixture(autouse=True)
@@ -236,8 +235,7 @@ def test_the_writer_refuses_a_record_with_a_missing_field(tmp_path):
     # The same rules, where they must NOT fire.
     {"earnings_status": c.EARNINGS_UNAVAILABLE, "picks": _picks4(traded=False, weight=0.0)},
     {"earnings_status": c.EARNINGS_MISSING_CONTEXT, "picks": _picks4(traded=False, weight=0.0)},
-    {"picks": [_pick(1, "AAAA", weight=HIGH), _pick(2, "BBBB", weight=HIGH),
-               _pick(3, "CCCC", weight=LOW), _pick(4, "DDDD", weight=HIGH)]},
+    {"picks": [_pick(i + 1, t * 4, weight=w) for i, (t, w) in enumerate(zip("ABCD", UNEQUAL))]},
     {"picks": [_pick(1, "AAAA", traded=False, weight=0.0),
                _pick(2, "BBBB", label=c.EARNINGS_LABEL_AMC, weight=0.5),
                _pick(3, "CCCC", label=c.EARNINGS_LABEL_BMO, weight=0.5),
@@ -660,13 +658,12 @@ def test_every_sample_has_a_status_file_for_the_same_day(case):
         assert status["jobs"][c.JOB_SCAN]["trading_date"] == DAY
 
 
-def test_the_sample_weights_are_ovs_normalized_high_atr_weights():
-    # frozen: CCCC has premarket_range_atr >= 0.75, so raw weights 1, 1, 0.1, 1 (ov_config.json),
-    # normalized by fsum 3.1 (ov_engine/allocation_policy.py, apply_allocation_sizing_policy).
+def test_the_samples_show_unequal_and_earnings_day_weights():
+    # frozen: four traded names with unequal weights.
     view = c.read_day(SAMPLES / "frozen", DAY)
-    assert [p["weight"] for p in view["picks"]] == [HIGH, HIGH, LOW, HIGH]
+    assert [p["weight"] for p in view["picks"]] == list(UNEQUAL)
     assert view["reference_promoted"] == ["FFFF"]
-    # parity_match: an earnings day, so only the AMC and BMO names are traded.
+    # parity_match: an earnings day where only the AMC and BMO names are traded.
     view = c.read_day(SAMPLES / "parity_match", DAY)
     assert [(p["earnings_label"], p["weight"]) for p in view["picks"]] == [
         (None, 0.0), (c.EARNINGS_LABEL_AMC, 0.5), (c.EARNINGS_LABEL_BMO, 0.5), (None, 0.0)]

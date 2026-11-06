@@ -15,7 +15,7 @@
       "score": 91.5,
       "earnings_label": null,
       "traded": true,
-      "weight": 0.3225806451612903
+      "weight": 0.4
     },
     {
       "rank": 2,
@@ -23,7 +23,7 @@
       "score": 88.25,
       "earnings_label": null,
       "traded": true,
-      "weight": 0.3225806451612903
+      "weight": 0.3
     },
     {
       "rank": 3,
@@ -31,7 +31,7 @@
       "score": 86.0,
       "earnings_label": null,
       "traded": true,
-      "weight": 0.03225806451612903
+      "weight": 0.2
     },
     {
       "rank": 4,
@@ -39,7 +39,7 @@
       "score": 85.75,
       "earnings_label": null,
       "traded": true,
-      "weight": 0.3225806451612903
+      "weight": 0.1
     }
   ],
   "reference_state": "REF_OK",

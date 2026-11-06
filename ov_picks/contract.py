@@ -43,9 +43,9 @@ KIND_SETTLED = "ov_picks_settled"
 KIND_PARITY = "ov_picks_parity"
 KIND_STATUS = "ov_picks_status"
 
-# OV's own limit on pre-market picks: MAX_PREMARKET_CANDIDATES, ov_engine/config.py:14 at c700b18.
+# The spec's four pre-market picks (ashwinurao/edge-scanner#8).
 MAX_PICKS = 4
-# The traded weights sum to 1 (OV normalizes by math.fsum). 1e-9 is the spec's compare tolerance.
+# The traded weights sum to 1, added with math.fsum. 1e-9 is the spec's compare tolerance.
 WEIGHT_SUM_TOLERANCE = 1e-9
 # A sanity bound only; the runner upper-cases and strips tickers the way OV's live code does.
 MAX_TICKER_LEN = 16
@@ -109,13 +109,13 @@ SETTLED_STATES = (SETTLED_SAME, SETTLED_DIFF)
 PARITY_STATUSES = (PARITY_MATCH, PARITY_DIFF, PARITY_NO_OV_RUN)
 REFERENCE_STATES = (REF_OK, REF_WARN)
 
-# OV's earnings data status, verbatim: ov_engine/earnings.py:204-247 at c700b18.
+# OV's earnings data status, as OV writes it.
 EARNINGS_AVAILABLE = "available"
 EARNINGS_UNAVAILABLE = "unavailable"
 EARNINGS_MISSING_CONTEXT = "missing_prior_session_context"
 EARNINGS_STATUSES = (EARNINGS_AVAILABLE, EARNINGS_UNAVAILABLE, EARNINGS_MISSING_CONTEXT)
 
-# OV's earnings_release_timing column (ov_engine/earnings.py:152-153 at c700b18), the same
+# OV's earnings release timing, the same
 # event as its earnings_label text "PRIOR-EVENING EARNINGS" and "SAME-MORNING EARNINGS".
 EARNINGS_LABEL_AMC = "AMC"     # reported after the prior session's close
 EARNINGS_LABEL_BMO = "BMO"     # reports before this session's open
