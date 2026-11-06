@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "kind": "ov_picks",
+  "trading_date": "2026-11-05",
+  "frozen_at": "2026-11-05T14:25:00Z",
+  "warmup_state": "READY",
+  "warmup_reason": "",
+  "late": false,
+  "shadow": false,
+  "earnings_status": "available",
+  "picks": [
+    {
+      "rank": 1,
+      "ticker": "AAAA",
+      "score": 91.5,
+      "earnings_label": null,
+      "traded": true,
+      "weight": 0.3225806451612903
+    },
+    {
+      "rank": 2,
+      "ticker": "BBBB",
+      "score": 88.25,
+      "earnings_label": null,
+      "traded": true,
+      "weight": 0.3225806451612903
+    },
+    {
+      "rank": 3,
+      "ticker": "CCCC",
+      "score": 86.0,
+      "earnings_label": null,
+      "traded": true,
+      "weight": 0.03225806451612903
+    },
+    {
+      "rank": 4,
+      "ticker": "DDDD",
+      "score": 85.75,
+      "earnings_label": null,
+      "traded": true,
+      "weight": 0.3225806451612903
+    }
+  ],
+  "reference_state": "REF_OK",
+  "reference_promoted": [
+    "FFFF"
+  ]
+}
