@@ -19,8 +19,12 @@ venv/
 dashboard-v2/node_modules/
 dashboard-v2/dist/
 
-# Tooling
-.claude/
+# Tooling: local Claude Code state stays out; the shared plugin settings are tracked
+.claude/*
+!.claude/settings.json
+
+# scratch artifacts (test output, screenshots, notes)
+.logs/
 
 # local databases (none ship with the project; a provider library may write one)
 *.db
