@@ -8,38 +8,617 @@
   "late": true,
   "shadow": false,
   "earnings_status": "available",
+  "metric_labels": [
+    "Rank",
+    "Score",
+    "Price",
+    "Gap %",
+    "PM volume",
+    "Rel. volume",
+    "Earnings",
+    "Sector",
+    "Status"
+  ],
   "picks": [
     {
       "rank": 1,
       "ticker": "AAAA",
       "score": 91.5,
+      "status": "PICK",
+      "top": true,
       "earnings_label": null,
-      "traded": true,
-      "weight": 0.25
+      "metrics": [
+        {
+          "label": "Rank",
+          "value": 1
+        },
+        {
+          "label": "Score",
+          "value": 91.5
+        },
+        {
+          "label": "Price",
+          "value": 42.1
+        },
+        {
+          "label": "Gap %",
+          "value": 9.07
+        },
+        {
+          "label": "PM volume",
+          "value": 1850000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 6.2
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Technology"
+        },
+        {
+          "label": "Status",
+          "value": "PICK"
+        }
+      ],
+      "details": [
+        {
+          "label": "Rank",
+          "value": 1
+        },
+        {
+          "label": "Ticker",
+          "value": "AAAA"
+        },
+        {
+          "label": "Score",
+          "value": 91.5
+        },
+        {
+          "label": "Status",
+          "value": "PICK"
+        },
+        {
+          "label": "Price",
+          "value": 42.1
+        },
+        {
+          "label": "Prior close",
+          "value": 38.6
+        },
+        {
+          "label": "Gap %",
+          "value": 9.07
+        },
+        {
+          "label": "PM volume",
+          "value": 1850000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 6.2
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Technology"
+        },
+        {
+          "label": "Exchange",
+          "value": "NASDAQ"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format."
+        }
+      ]
     },
     {
       "rank": 2,
       "ticker": "BBBB",
       "score": 88.25,
+      "status": "PICK",
+      "top": true,
       "earnings_label": null,
-      "traded": true,
-      "weight": 0.25
+      "metrics": [
+        {
+          "label": "Rank",
+          "value": 2
+        },
+        {
+          "label": "Score",
+          "value": 88.25
+        },
+        {
+          "label": "Price",
+          "value": 18.45
+        },
+        {
+          "label": "Gap %",
+          "value": 7.27
+        },
+        {
+          "label": "PM volume",
+          "value": 2410000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 4.8
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Health Care"
+        },
+        {
+          "label": "Status",
+          "value": "PICK"
+        }
+      ],
+      "details": [
+        {
+          "label": "Rank",
+          "value": 2
+        },
+        {
+          "label": "Ticker",
+          "value": "BBBB"
+        },
+        {
+          "label": "Score",
+          "value": 88.25
+        },
+        {
+          "label": "Status",
+          "value": "PICK"
+        },
+        {
+          "label": "Price",
+          "value": 18.45
+        },
+        {
+          "label": "Prior close",
+          "value": 17.2
+        },
+        {
+          "label": "Gap %",
+          "value": 7.27
+        },
+        {
+          "label": "PM volume",
+          "value": 2410000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 4.8
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Health Care"
+        },
+        {
+          "label": "Exchange",
+          "value": "NYSE"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format."
+        }
+      ]
     },
     {
       "rank": 3,
       "ticker": "CCCC",
       "score": 86.0,
+      "status": "PICK",
+      "top": true,
       "earnings_label": null,
-      "traded": true,
-      "weight": 0.25
+      "metrics": [
+        {
+          "label": "Rank",
+          "value": 3
+        },
+        {
+          "label": "Score",
+          "value": 86.0
+        },
+        {
+          "label": "Price",
+          "value": 7.92
+        },
+        {
+          "label": "Gap %",
+          "value": 10.77
+        },
+        {
+          "label": "PM volume",
+          "value": 5320000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 9.1
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Energy"
+        },
+        {
+          "label": "Status",
+          "value": "PICK"
+        }
+      ],
+      "details": [
+        {
+          "label": "Rank",
+          "value": 3
+        },
+        {
+          "label": "Ticker",
+          "value": "CCCC"
+        },
+        {
+          "label": "Score",
+          "value": 86.0
+        },
+        {
+          "label": "Status",
+          "value": "PICK"
+        },
+        {
+          "label": "Price",
+          "value": 7.92
+        },
+        {
+          "label": "Prior close",
+          "value": 7.15
+        },
+        {
+          "label": "Gap %",
+          "value": 10.77
+        },
+        {
+          "label": "PM volume",
+          "value": 5320000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 9.1
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Energy"
+        },
+        {
+          "label": "Exchange",
+          "value": "NASDAQ"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format."
+        }
+      ]
     },
     {
       "rank": 4,
       "ticker": "DDDD",
       "score": 85.75,
+      "status": "PICK",
+      "top": true,
       "earnings_label": null,
-      "traded": true,
-      "weight": 0.25
+      "metrics": [
+        {
+          "label": "Rank",
+          "value": 4
+        },
+        {
+          "label": "Score",
+          "value": 85.75
+        },
+        {
+          "label": "Price",
+          "value": 126.3
+        },
+        {
+          "label": "Gap %",
+          "value": 5.43
+        },
+        {
+          "label": "PM volume",
+          "value": 640000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 3.4
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Industrials"
+        },
+        {
+          "label": "Status",
+          "value": "PICK"
+        }
+      ],
+      "details": [
+        {
+          "label": "Rank",
+          "value": 4
+        },
+        {
+          "label": "Ticker",
+          "value": "DDDD"
+        },
+        {
+          "label": "Score",
+          "value": 85.75
+        },
+        {
+          "label": "Status",
+          "value": "PICK"
+        },
+        {
+          "label": "Price",
+          "value": 126.3
+        },
+        {
+          "label": "Prior close",
+          "value": 119.8
+        },
+        {
+          "label": "Gap %",
+          "value": 5.43
+        },
+        {
+          "label": "PM volume",
+          "value": 640000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 3.4
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Industrials"
+        },
+        {
+          "label": "Exchange",
+          "value": "NYSE"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format."
+        }
+      ]
+    },
+    {
+      "rank": 5,
+      "ticker": "EEEE",
+      "score": 84.5,
+      "status": "RANKED",
+      "top": false,
+      "earnings_label": null,
+      "metrics": [
+        {
+          "label": "Rank",
+          "value": 5
+        },
+        {
+          "label": "Score",
+          "value": 84.5
+        },
+        {
+          "label": "Price",
+          "value": 55.4
+        },
+        {
+          "label": "Gap %",
+          "value": 4.73
+        },
+        {
+          "label": "PM volume",
+          "value": 910000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 2.9
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Technology"
+        },
+        {
+          "label": "Status",
+          "value": "RANKED"
+        }
+      ],
+      "details": [
+        {
+          "label": "Rank",
+          "value": 5
+        },
+        {
+          "label": "Ticker",
+          "value": "EEEE"
+        },
+        {
+          "label": "Score",
+          "value": 84.5
+        },
+        {
+          "label": "Status",
+          "value": "RANKED"
+        },
+        {
+          "label": "Price",
+          "value": 55.4
+        },
+        {
+          "label": "Prior close",
+          "value": 52.9
+        },
+        {
+          "label": "Gap %",
+          "value": 4.73
+        },
+        {
+          "label": "PM volume",
+          "value": 910000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 2.9
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Technology"
+        },
+        {
+          "label": "Exchange",
+          "value": "NASDAQ"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format."
+        }
+      ]
+    },
+    {
+      "rank": 6,
+      "ticker": "FFFF",
+      "score": 79.0,
+      "status": "WATCH",
+      "top": false,
+      "earnings_label": null,
+      "metrics": [
+        {
+          "label": "Rank",
+          "value": 6
+        },
+        {
+          "label": "Score",
+          "value": 79.0
+        },
+        {
+          "label": "Price",
+          "value": 12.06
+        },
+        {
+          "label": "Gap %",
+          "value": 5.79
+        },
+        {
+          "label": "PM volume",
+          "value": 1270000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 3.7
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Consumer"
+        },
+        {
+          "label": "Status",
+          "value": "WATCH"
+        }
+      ],
+      "details": [
+        {
+          "label": "Rank",
+          "value": 6
+        },
+        {
+          "label": "Ticker",
+          "value": "FFFF"
+        },
+        {
+          "label": "Score",
+          "value": 79.0
+        },
+        {
+          "label": "Status",
+          "value": "WATCH"
+        },
+        {
+          "label": "Price",
+          "value": 12.06
+        },
+        {
+          "label": "Prior close",
+          "value": 11.4
+        },
+        {
+          "label": "Gap %",
+          "value": 5.79
+        },
+        {
+          "label": "PM volume",
+          "value": 1270000
+        },
+        {
+          "label": "Rel. volume",
+          "value": 3.7
+        },
+        {
+          "label": "Earnings",
+          "value": null
+        },
+        {
+          "label": "Sector",
+          "value": "Consumer"
+        },
+        {
+          "label": "Exchange",
+          "value": "NASDAQ"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format."
+        }
+      ]
     }
   ],
   "reference_state": "REF_OK",

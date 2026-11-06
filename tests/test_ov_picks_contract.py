@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "ov_picks" / "samples"
 DAY = "2026-11-05"                      # a Thursday, after the 2026-11-01 DST change
 FROZEN_AT = "2026-11-05T14:25:00Z"      # 09:25:00 ET (EST, UTC-5)
-UNEQUAL = (0.4, 0.3, 0.2, 0.1)          # unequal traded weights; the numbers only show the format
+LABELS = ["Price", "Gap %"]             # generic metric labels; the module chooses its own
+TICKERS = ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "GGGG"]
 
 
 @pytest.fixture(autouse=True)
@@ -29,14 +30,28 @@ def _no_network(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", _refuse)
 
 
-def _pick(rank, ticker, *, score=80.0, label=None, traded=True, weight=0.25):
-    return {"rank": rank, "ticker": ticker, "score": score, "earnings_label": label,
-            "traded": traded, "weight": weight}
+def _entries(pairs):
+    return [{"label": label, "value": value} for label, value in pairs]
 
 
-def _picks4(**kw):
-    return [_pick(1, "AAAA", score=91.5, **kw), _pick(2, "BBBB", score=88.25, **kw),
-            _pick(3, "CCCC", score=86.0, **kw), _pick(4, "DDDD", score=85.75, **kw)]
+def _pick(rank, ticker, *, score=80.0, status="PICK", top=None, label=None, metrics=None, details=None):
+    return {
+        "rank": rank, "ticker": ticker, "score": score, "status": status,
+        "top": rank <= c.MAX_PICKS if top is None else top, "earnings_label": label,
+        "metrics": _entries(zip(LABELS, (10.5, 2.25))) if metrics is None else metrics,
+        "details": (_entries([("Ticker", ticker), ("Price", 10.5), ("Sector", "Tech"), ("Note", None)])
+                    if details is None else details),
+    }
+
+
+def _rows(count=len(TICKERS)):
+    """A ranked list: the first four are the top picks, the rest ranked below them."""
+    return [_pick(i + 1, t, score=91.5 - i, status="PICK" if i < c.MAX_PICKS else "WATCH")
+            for i, t in enumerate(TICKERS[:count])]
+
+
+def _many(count):
+    return [_pick(i + 1, f"T{i:03d}") for i in range(count)]
 
 
 def _record(**over):
@@ -48,7 +63,8 @@ def _record(**over):
         "late": False,
         "shadow": False,
         "earnings_status": c.EARNINGS_AVAILABLE,
-        "picks": _picks4(),
+        "metric_labels": list(LABELS),
+        "picks": _rows(),
         "reference_state": c.REF_OK,
         "reference_promoted": [],
     }
@@ -83,14 +99,15 @@ def test_every_job_has_its_spec_result_states_plus_the_common_ones():
 
 def test_contract_doc_names_every_field_and_state():
     doc = (ROOT / "ov_picks" / "CONTRACT.md").read_text(encoding="utf-8")
-    names = (set(c.PICKS_FIELDS) | set(c.PICK_FIELDS) | set(c.SETTLED_FIELDS)
+    names = (set(c.PICKS_FIELDS) | set(c.PICK_FIELDS) | set(c.ENTRY_FIELDS) | set(c.SETTLED_FIELDS)
              | set(c.PARITY_FIELDS) | set(c.STATUS_FIELDS) | set(c.STATUS_ENTRY_FIELDS)
              | set(c.VIEW_FIELDS) | set(c.STATUS_VIEW_FIELDS) | set(c.JOBS)
              | {s for states in c.JOB_STATES.values() for s in states}
              | set(c.EARNINGS_STATUSES) | set(c.EARNINGS_LABELS)
              | {c.PENDING, c.UNREADABLE, c.MISSING, c.INVALID}
              | {c.PICKS_FILE, c.SETTLED_FILE, c.PARITY_FILE, c.STATUS_FILE}
-             | {c.KIND_PICKS, c.KIND_SETTLED, c.KIND_PARITY, c.KIND_STATUS})
+             | {c.KIND_PICKS, c.KIND_SETTLED, c.KIND_PARITY, c.KIND_STATUS}
+             | {"MAX_PICKS", "MAX_ROWS", "MAX_METRICS", "MAX_DETAILS", "MAX_TEXT_LEN", "MAX_FILE_BYTES"})
     missing = sorted(n for n in names if f"`{n}`" not in doc)
     assert missing == []
 
@@ -135,7 +152,7 @@ def test_a_second_write_for_the_same_day_is_refused_and_the_first_stays(tmp_path
     first = path.read_bytes()
 
     with pytest.raises(c.AlreadyWritten):
-        c.write_picks(tmp_path, _record(picks=[_pick(1, "EEEE", weight=1.0)]))
+        c.write_picks(tmp_path, _record(picks=[_pick(1, "EEEE")]))
 
     assert path.read_bytes() == first
     assert sorted(p.name for p in path.parent.iterdir()) == [c.PICKS_FILE]
@@ -167,32 +184,63 @@ def test_a_refused_record_writes_nothing(tmp_path):
 
 
 @pytest.mark.parametrize("over, problem", [
-    # Earnings feed down (spec US17): no traded set and no earnings labels.
-    ({"earnings_status": c.EARNINGS_UNAVAILABLE}, "traded"),
-    ({"earnings_status": c.EARNINGS_MISSING_CONTEXT}, "traded"),
+    # Earnings feed down (spec US17): no earnings labels, on a top pick or below.
     ({"earnings_status": c.EARNINGS_UNAVAILABLE,
-      "picks": [_pick(1, "AAAA", label=c.EARNINGS_LABEL_AMC, traded=False, weight=0.0)]}, "earnings_label"),
+      "picks": [_pick(1, "AAAA", label=c.EARNINGS_LABEL_AMC)]}, "earnings_label"),
+    ({"earnings_status": c.EARNINGS_MISSING_CONTEXT,
+      "picks": [_pick(1, "AAAA"), _pick(2, "BBBB", top=False, label=c.EARNINGS_LABEL_BMO)]}, "earnings_label"),
     ({"earnings_status": "down"}, "earnings_status"),
-    # Weights: the traded set sums to 1 (OV normalizes by fsum); an untraded pick weighs 0.
-    ({"picks": _picks4(weight=0.3)}, "weights"),
-    ({"picks": [_pick(1, "AAAA", traded=False, weight=0.5)]}, "weight"),
-    ({"picks": [_pick(1, "AAAA", weight=1.5)]}, "weight"),
-    ({"picks": [_pick(1, "AAAA", weight=float("nan"))]}, "weight"),
-    ({"picks": [_pick(1, "AAAA", weight="1.0")]}, "weight"),
-    # At most OV's four picks, ranked 1..n in order, each ticker once.
-    ({"picks": _picks4() + [_pick(5, "EEEE")]}, "at most 4"),
-    ({"picks": [_pick(2, "AAAA", weight=0.5), _pick(1, "BBBB", weight=0.5)]}, "rank"),
-    ({"picks": [_pick(1, "AAAA", weight=0.5), _pick(3, "BBBB", weight=0.5)]}, "rank"),
-    ({"picks": [_pick(True, "AAAA", weight=1.0)]}, "rank"),
-    ({"picks": [_pick(1, "AAAA", weight=0.5), _pick(2, "AAAA", weight=0.5)]}, "twice"),
-    ({"picks": [_pick(1, "aaaa", weight=1.0)]}, "ticker"),
-    ({"picks": [_pick(1, " AAAA", weight=1.0)]}, "ticker"),
-    ({"picks": [_pick(1, "", weight=1.0)]}, "ticker"),
-    ({"picks": [_pick(1, "AAAA", score=float("inf"), weight=1.0)]}, "score"),
-    ({"picks": [_pick(1, "AAAA", label="PRIOR-EVENING EARNINGS", weight=1.0)]}, "earnings_label"),
-    ({"picks": [_pick(1, "AAAA", traded=1, weight=1.0)]}, "traded"),
-    ({"picks": [{**_pick(1, "AAAA", weight=1.0), "sector": "Tech"}]}, "sector"),
-    ({"picks": [{k: v for k, v in _pick(1, "AAAA", weight=1.0).items() if k != "score"}]}, "score"),
+    # The ranked list: at most 100 rows, in OV's rank order from 1, each ticker once.
+    ({"picks": _many(c.MAX_ROWS + 1)}, "at most 100"),
+    ({"picks": [_pick(2, "AAAA"), _pick(1, "BBBB")]}, "rank order"),
+    ({"picks": [_pick(2, "AAAA"), _pick(3, "BBBB")]}, "rank order"),         # not from rank 1
+    ({"picks": [_pick(1, "AAAA"), _pick(1, "BBBB")]}, "rank order"),         # not strictly increasing
+    ({"picks": [_pick(True, "AAAA")]}, "rank"),
+    ({"picks": [_pick(0, "AAAA")]}, "rank"),
+    ({"picks": [_pick(1, "AAAA"), _pick(2, "AAAA")]}, "twice"),
+    ({"picks": [_pick(1, "aaaa")]}, "ticker"),
+    ({"picks": [_pick(1, " AAAA")]}, "ticker"),
+    ({"picks": [_pick(1, "")]}, "ticker"),
+    ({"picks": [_pick(1, "AAAA", score=float("inf"))]}, "score"),
+    ({"picks": [_pick(1, "AAAA", label="PRIOR-EVENING EARNINGS")]}, "earnings_label"),
+    # Status: OV's text, verbatim, never blank.
+    ({"picks": [_pick(1, "AAAA", status="")]}, "status"),
+    ({"picks": [_pick(1, "AAAA", status=None)]}, "status"),
+    ({"picks": [_pick(1, "AAAA", status="X" * (c.MAX_TEXT_LEN + 1))]}, "status"),
+    # Top: a real boolean; the top picks come first, at most the spec's four.
+    ({"picks": [_pick(1, "AAAA", top=1)]}, "top"),
+    ({"picks": [_pick(i + 1, t, top=True) for i, t in enumerate(["A", "B", "C", "D", "E"])]}, "at most 4"),
+    ({"picks": [_pick(1, "AAAA", top=False), _pick(2, "BBBB", top=True)]}, "come first"),
+    ({"picks": [_pick(1, "AAAA"), _pick(2, "BBBB", top=False), _pick(3, "CCCC", top=True)]}, "come first"),
+    # Metrics: every row has metric_labels' labels, in order; at most 20 different labels.
+    ({"picks": [_pick(1, "AAAA", metrics=_entries([("Gap %", 2.25), ("Price", 10.5)]))]}, "metric_labels"),
+    ({"picks": [_pick(1, "AAAA", metrics=_entries([("Price", 10.5)]))]}, "metric_labels"),
+    ({"metric_labels": ["Price", "Price"],
+      "picks": [_pick(1, "AAAA", metrics=_entries([("Price", 1.0), ("Price", 2.0)]))]}, "metric_labels"),
+    ({"metric_labels": [f"M{i}" for i in range(c.MAX_METRICS + 1)], "picks": []}, "metric_labels"),
+    ({"metric_labels": [" "], "picks": []}, "metric_labels"),
+    ({"metric_labels": "Price"}, "metric_labels"),
+    ({"picks": [_pick(1, "AAAA", metrics="Price")]}, "metrics"),
+    ({"picks": [_pick(1, "AAAA", metrics=_entries([("Price", float("nan")), ("Gap %", 1.0)]))]}, "value"),
+    ({"picks": [_pick(1, "AAAA", metrics=_entries([("Price", True), ("Gap %", 1.0)]))]}, "value"),
+    ({"picks": [_pick(1, "AAAA", metrics=[{"label": "Price", "value": 1.0, "unit": "$"},
+                                          {"label": "Gap %", "value": 1.0}])]}, "unit"),
+    ({"picks": [_pick(1, "AAAA", metrics=[{"label": "Price"}, {"label": "Gap %", "value": 1.0}])]},
+     "value is missing"),
+    # Details: at most 200 entries; labels not blank; text values at most 200 characters.
+    ({"picks": [_pick(1, "AAAA", details=_entries((f"c{i}", i) for i in range(c.MAX_DETAILS + 1)))]},
+     "at most 200"),
+    ({"picks": [_pick(1, "AAAA", details=_entries([("Note", "x" * (c.MAX_TEXT_LEN + 1))]))]}, "value"),
+    ({"picks": [_pick(1, "AAAA", details=_entries([("Flags", ["a", "b"])]))]}, "value"),
+    ({"picks": [_pick(1, "AAAA", details=_entries([("  ", 1)]))]}, "label"),
+    ({"picks": [_pick(1, "AAAA", details=_entries([("x" * (c.MAX_TEXT_LEN + 1), 1)]))]}, "label"),
+    ({"picks": [_pick(1, "AAAA", details={"Price": 1})]}, "details"),
+    ({"picks": [_pick(1, "AAAA", details=["Price"])]}, "details[0]"),
+    # The allocation fields are gone (owner, 2026-11-06), and a row needs every field it has.
+    ({"picks": [{**_pick(1, "AAAA"), "traded": True}]}, "traded"),
+    ({"picks": [{**_pick(1, "AAAA"), "weight": 0.25}]}, "weight"),
+    ({"picks": [{k: v for k, v in _pick(1, "AAAA").items() if k != "score"}]}, "score"),
+    ({"picks": [{k: v for k, v in _pick(1, "AAAA").items() if k != "details"}]}, "details"),
     # Warmup: picks freeze after the 09:20 deadline, so only READY or NOT_READY,
     # and NOT_READY says why (spec US9, US10).
     ({"warmup_state": c.NOT_READY, "warmup_reason": "  "}, "warmup_reason"),
@@ -224,6 +272,30 @@ def test_the_writer_refuses_a_record_that_breaks_a_rule(tmp_path, over, problem)
     assert not (tmp_path / DAY / c.PICKS_FILE).exists()
 
 
+def test_the_writer_refuses_a_record_bigger_than_a_reader_takes(tmp_path, monkeypatch):
+    monkeypatch.setattr(c, "MAX_FILE_BYTES", 2_000)
+    with pytest.raises(c.ContractError, match="bytes"):
+        c.write_picks(tmp_path, _record())
+    assert not (tmp_path / DAY / c.PICKS_FILE).exists()
+    # The same record fits once the limit is the real one.
+    monkeypatch.undo()
+    c.write_picks(tmp_path, _record())
+    assert c.read_day(tmp_path, DAY)["has_picks"] is True
+
+
+def test_a_full_ranked_list_with_full_details_fits_well_inside_the_size_limit(tmp_path):
+    # 100 rows, 20 metrics and 200 details each, with 40-character labels and 30-character
+    # text values: more than a real day holds, still well under MAX_FILE_BYTES.
+    labels = [f"metric label {i:02d}".ljust(40, ".") for i in range(c.MAX_METRICS)]
+    detail = _entries((f"detail label {j:03d}".ljust(40, "."), "a thirty-character text value." if j % 2
+                       else 1234.56789012345) for j in range(c.MAX_DETAILS))
+    rows = [_pick(i + 1, f"T{i:03d}", metrics=_entries((label, 0.5) for label in labels), details=detail)
+            for i in range(c.MAX_ROWS)]
+    path = c.write_picks(tmp_path, _record(metric_labels=labels, picks=rows))
+    assert path.stat().st_size < c.MAX_FILE_BYTES / 2
+    assert len(c.read_day(tmp_path, DAY)["picks"]) == c.MAX_ROWS
+
+
 def test_the_writer_refuses_a_record_with_a_missing_field(tmp_path):
     rec = _record()
     del rec["earnings_status"]
@@ -233,16 +305,26 @@ def test_the_writer_refuses_a_record_with_a_missing_field(tmp_path):
 
 @pytest.mark.parametrize("over", [
     # The same rules, where they must NOT fire.
-    {"earnings_status": c.EARNINGS_UNAVAILABLE, "picks": _picks4(traded=False, weight=0.0)},
-    {"earnings_status": c.EARNINGS_MISSING_CONTEXT, "picks": _picks4(traded=False, weight=0.0)},
-    {"picks": [_pick(i + 1, t * 4, weight=w) for i, (t, w) in enumerate(zip("ABCD", UNEQUAL))]},
-    {"picks": [_pick(1, "AAAA", traded=False, weight=0.0),
-               _pick(2, "BBBB", label=c.EARNINGS_LABEL_AMC, weight=0.5),
-               _pick(3, "CCCC", label=c.EARNINGS_LABEL_BMO, weight=0.5),
-               _pick(4, "DDDD", traded=False, weight=0.0)]},
-    {"picks": [_pick(1, "AAAA", weight=1)]},              # a whole-number weight is a number
-    {"picks": [_pick(1, "BRK.B", weight=1.0)]},
+    {"earnings_status": c.EARNINGS_UNAVAILABLE},
+    {"earnings_status": c.EARNINGS_MISSING_CONTEXT},
+    # An earnings day: labels on top picks and on a row below them.
+    {"picks": [_pick(1, "AAAA"), _pick(2, "BBBB", label=c.EARNINGS_LABEL_AMC),
+               _pick(3, "CCCC", label=c.EARNINGS_LABEL_BMO), _pick(4, "DDDD"),
+               _pick(5, "EEEE", status="WATCH", label=c.EARNINGS_LABEL_BMO)]},
+    {"picks": _many(c.MAX_ROWS)},                         # the full 100 rows
+    {"picks": [_pick(1, "AAAA"), _pick(3, "BBBB", top=False), _pick(7, "CCCC", top=False)]},  # rank gaps
+    {"picks": [_pick(1, "AAAA", top=False), _pick(2, "BBBB", top=False)]},   # no name passed the candidate gates
+    {"picks": [_pick(1, "AAAA"), _pick(2, "BBBB")]},      # two top picks and nothing below them
+    {"picks": [_pick(1, "BRK.B")]},
     {"picks": []},                                        # a thin day: no name passed OV's gates
+    {"picks": [_pick(1, "AAAA", status="X" * c.MAX_TEXT_LEN)]},
+    {"picks": [_pick(1, "AAAA", details=[])]},
+    {"picks": [_pick(1, "AAAA", details=_entries((f"c{i}", i) for i in range(c.MAX_DETAILS)))]},
+    {"picks": [_pick(1, "AAAA", details=_entries([("Note", "x" * c.MAX_TEXT_LEN), ("Empty", None),
+                                                  ("Count", 3), ("Flag", "true"), ("Note", "again")]))]},
+    {"metric_labels": [], "picks": [_pick(1, "AAAA", metrics=[])]},
+    {"metric_labels": [f"M{i}" for i in range(c.MAX_METRICS)],
+     "picks": [_pick(1, "AAAA", metrics=_entries((f"M{i}", None if i % 2 else "text") for i in range(c.MAX_METRICS)))]},
     {"warmup_state": c.NOT_READY, "warmup_reason": "Daily bars still loading at 09:20 ET."},
     {"warmup_reason": "Ready at 09:02 ET after one retry."},
     {"late": True, "frozen_at": "2026-11-05T14:31:12Z"},
@@ -284,7 +366,7 @@ def test_settled_and_parity_records_join_the_frozen_picks(tmp_path):
 
     view = c.read_day(tmp_path, DAY)
 
-    assert view["picks"] == _picks4()                    # the 09:26 re-check never replaces them
+    assert view["picks"] == _rows()                      # the 09:26 re-check never replaces them
     assert (view["settled_state"], view["settled_same"], view["settled_diff"]) == (c.SETTLED_DIFF, False, True)
     assert view["settled_difference"] == "Rank 4 would be EEEE, not DDDD."
     assert view["settled_at"] == "2026-11-05T14:26:05Z"
@@ -395,9 +477,15 @@ def test_an_oversized_file_is_unreadable(tmp_path):
     (lambda r: {**r, "schema_version": True}, "schema_version"),
     (lambda r: {k: v for k, v in r.items() if k != "schema_version"}, "schema_version"),
     (lambda r: {k: v for k, v in r.items() if k != "picks"}, "picks"),
-    (lambda r: {**r, "picks": [{**r["picks"][0], "weight": "big"}]}, "weight"),
-    # The reader re-checks the safety rule: an earnings-down day never shows a traded set.
-    (lambda r: {**r, "earnings_status": c.EARNINGS_UNAVAILABLE}, "traded"),
+    (lambda r: {**r, "picks": [{**r["picks"][0], "top": "yes"}] + r["picks"][1:]}, "top"),
+    # The reader re-checks the rules between fields too.
+    (lambda r: {**r, "picks": [{**r["picks"][0], "top": False}] + r["picks"][1:]}, "come first"),
+    (lambda r: {**r, "earnings_status": c.EARNINGS_UNAVAILABLE,
+                "picks": [{**r["picks"][0], "earnings_label": c.EARNINGS_LABEL_AMC}] + r["picks"][1:]},
+     "earnings_label"),
+    (lambda r: {**r, "picks": [{**r["picks"][0], "metrics": r["picks"][0]["metrics"][::-1]}] + r["picks"][1:]},
+     "metric_labels"),
+    (lambda r: {**r, "picks": r["picks"][::-1]}, "rank order"),
 ])
 def test_a_file_that_breaks_the_schema_is_refused_with_the_reason(tmp_path, change, problem):
     rec = {"schema_version": 1, "kind": c.KIND_PICKS, **_record()}
@@ -410,12 +498,15 @@ def test_a_file_that_breaks_the_schema_is_refused_with_the_reason(tmp_path, chan
 
 def test_the_reader_ignores_unknown_fields(tmp_path):
     rec = {"schema_version": 1, "kind": c.KIND_PICKS, **_record(), "future_field": {"a": 1}}
-    rec["picks"] = [{**p, "sector": "Tech"} for p in rec["picks"]]
+    rec["picks"] = [{**p, "sector": "Tech", "details": [{**e, "unit": "$"} for e in p["details"]]}
+                    for p in rec["picks"]]
     _write_json(tmp_path / DAY / c.PICKS_FILE, rec)
     view = c.read_day(tmp_path, DAY)
     assert view["has_picks"] is True
     assert "future_field" not in view
     assert all(set(p) == set(c.PICK_FIELDS) for p in view["picks"])
+    assert all(set(e) == set(c.ENTRY_FIELDS) for p in view["picks"] for e in p["details"] + p["metrics"])
+    assert view["picks"] == _rows()
 
 
 def test_the_reader_accepts_an_older_schema_version(monkeypatch):
@@ -424,7 +515,7 @@ def test_the_reader_accepts_an_older_schema_version(monkeypatch):
     view = c.read_day(SAMPLES / "older_schema", DAY)
     assert view["has_picks"] is True, view["reason"]
     assert view["schema_version"] == 1
-    assert [p["ticker"] for p in view["picks"]] == ["AAAA", "BBBB", "CCCC", "DDDD"]
+    assert [p["ticker"] for p in view["picks"]] == ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF"]
 
 
 def test_the_reader_reads_a_newer_version_and_says_so(tmp_path):
@@ -576,29 +667,20 @@ def test_a_corrupt_status_file_is_replaced_by_the_next_entry(tmp_path):
 
 # ---------------------------------------------------------------- sample day folders
 
+TOP = ["AAAA", "BBBB", "CCCC", "DDDD"]
 SAMPLE_CASES = {
-    # case: (has picks, shadow, late, warmup, earnings, traded tickers, settled, parity)
-    "frozen": (True, False, False, c.READY, c.EARNINGS_AVAILABLE,
-               ["AAAA", "BBBB", "CCCC", "DDDD"], c.PENDING, c.PENDING),
-    "shadow": (True, True, False, c.READY, c.EARNINGS_AVAILABLE,
-               ["AAAA", "BBBB", "CCCC", "DDDD"], c.SETTLED_SAME, c.PENDING),
-    "late": (True, False, True, c.READY, c.EARNINGS_AVAILABLE,
-             ["AAAA", "BBBB", "CCCC", "DDDD"], c.PENDING, c.PENDING),
-    "not_ready": (True, False, False, c.NOT_READY, c.EARNINGS_AVAILABLE,
-                  ["AAAA", "BBBB", "CCCC", "DDDD"], c.PENDING, c.PENDING),
-    "earnings_unavailable": (True, False, False, c.READY, c.EARNINGS_UNAVAILABLE,
-                             [], c.PENDING, c.PENDING),
-    "parity_match": (True, True, False, c.READY, c.EARNINGS_AVAILABLE,
-                     ["BBBB", "CCCC"], c.SETTLED_SAME, c.PARITY_MATCH),
-    "parity_diff": (True, True, False, c.READY, c.EARNINGS_AVAILABLE,
-                    ["AAAA", "BBBB", "CCCC", "DDDD"], c.SETTLED_SAME, c.PARITY_DIFF),
-    "no_ov_run": (True, False, False, c.READY, c.EARNINGS_AVAILABLE,
-                  ["AAAA", "BBBB", "CCCC", "DDDD"], c.SETTLED_SAME, c.PARITY_NO_OV_RUN),
-    "settled_diff": (True, True, False, c.READY, c.EARNINGS_AVAILABLE,
-                     ["AAAA", "BBBB", "CCCC", "DDDD"], c.SETTLED_DIFF, c.PENDING),
-    "older_schema": (True, False, False, c.READY, c.EARNINGS_AVAILABLE,
-                     ["AAAA", "BBBB", "CCCC", "DDDD"], c.PENDING, c.PENDING),
-    "warming": (False, None, None, None, None, [], None, None),
+    # case: (has picks, shadow, late, warmup, earnings, top tickers, rows, settled, parity)
+    "frozen": (True, False, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 10, c.PENDING, c.PENDING),
+    "shadow": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.SETTLED_SAME, c.PENDING),
+    "late": (True, False, True, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.PENDING, c.PENDING),
+    "not_ready": (True, False, False, c.NOT_READY, c.EARNINGS_AVAILABLE, TOP, 6, c.PENDING, c.PENDING),
+    "earnings_unavailable": (True, False, False, c.READY, c.EARNINGS_UNAVAILABLE, TOP, 6, c.PENDING, c.PENDING),
+    "parity_match": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 8, c.SETTLED_SAME, c.PARITY_MATCH),
+    "parity_diff": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.SETTLED_SAME, c.PARITY_DIFF),
+    "no_ov_run": (True, False, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.SETTLED_SAME, c.PARITY_NO_OV_RUN),
+    "settled_diff": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.SETTLED_DIFF, c.PENDING),
+    "older_schema": (True, False, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.PENDING, c.PENDING),
+    "warming": (False, None, None, None, None, [], 0, None, None),
 }
 
 
@@ -624,7 +706,7 @@ def test_every_sample_passes_the_writers_own_check(case):
 
 @pytest.mark.parametrize("case", sorted(SAMPLE_CASES))
 def test_the_reader_handles_every_sample(case):
-    has, shadow, late, warmup, earnings, traded, settled, parity = SAMPLE_CASES[case]
+    has, shadow, late, warmup, earnings, top, rows, settled, parity = SAMPLE_CASES[case]
 
     view = c.read_day(SAMPLES / case, DAY)
 
@@ -635,7 +717,10 @@ def test_the_reader_handles_every_sample(case):
         return
     assert (view["shadow"], view["late"], view["warmup_state"]) == (shadow, late, warmup)
     assert view["earnings_status"] == earnings
-    assert [p["ticker"] for p in view["picks"] if p["traded"]] == traded
+    assert [p["ticker"] for p in view["picks"] if p["top"]] == top
+    assert [p["rank"] for p in view["picks"]] == list(range(1, rows + 1))
+    assert all([m["label"] for m in p["metrics"]] == view["metric_labels"] for p in view["picks"])
+    assert all(p["details"] for p in view["picks"])
     assert (view["settled_state"], view["parity_status"]) == (settled, parity)
     if warmup == c.NOT_READY:
         assert view["warmup_reason"]
@@ -658,12 +743,16 @@ def test_every_sample_has_a_status_file_for_the_same_day(case):
         assert status["jobs"][c.JOB_SCAN]["trading_date"] == DAY
 
 
-def test_the_samples_show_unequal_and_earnings_day_weights():
-    # frozen: four traded names with unequal weights.
+def test_the_samples_show_a_ranked_list_and_an_earnings_day():
+    # frozen: the top four, then six names ranked below them.
     view = c.read_day(SAMPLES / "frozen", DAY)
-    assert [p["weight"] for p in view["picks"]] == list(UNEQUAL)
+    assert [(p["ticker"], p["top"]) for p in view["picks"]][3:6] == [("DDDD", True), ("EEEE", False), ("FFFF", False)]
+    assert len(view["metric_labels"]) <= c.MAX_METRICS
     assert view["reference_promoted"] == ["FFFF"]
-    # parity_match: an earnings day where only the AMC and BMO names are traded.
+    # parity_match: an earnings day, with labels on two top picks and on a row below them.
     view = c.read_day(SAMPLES / "parity_match", DAY)
-    assert [(p["earnings_label"], p["weight"]) for p in view["picks"]] == [
-        (None, 0.0), (c.EARNINGS_LABEL_AMC, 0.5), (c.EARNINGS_LABEL_BMO, 0.5), (None, 0.0)]
+    assert [p["earnings_label"] for p in view["picks"]] == [
+        None, c.EARNINGS_LABEL_AMC, c.EARNINGS_LABEL_BMO, None, None, None, c.EARNINGS_LABEL_BMO, None]
+    # earnings_unavailable: no labels at all.
+    view = c.read_day(SAMPLES / "earnings_unavailable", DAY)
+    assert [p["earnings_label"] for p in view["picks"]] == [None] * 6
