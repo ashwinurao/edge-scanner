@@ -65,3 +65,63 @@
 .badge.ovp-b-info { color: var(--accent); background: color-mix(in oklab, var(--accent) 16%, transparent); }
 .badge.ovp-b-warn { color: var(--warn); background: color-mix(in oklab, var(--warn) 14%, transparent); }
 .badge.ovp-b-bad { color: var(--down-text); background: var(--down-soft); }
+
+/* What a value means (Ash, 2026-11-07, layout "C1 + E1"): the module's tone on a cell, the
+   live columns' "09:31" mark, and the trade card under an opened row. The tint is an inset
+   shadow so the row's own background (top pick, hover, selected) still shows under it. */
+.ovp-when { display: block; font-size: 9px; font-weight: 500; letter-spacing: .02em; color: var(--text-faint); opacity: .8; text-transform: none; }
+.ovp-table td.ovp-tone-good { color: var(--up-text); box-shadow: inset 0 0 0 999px color-mix(in oklab, var(--up) 12%, transparent); }
+.ovp-table td.ovp-tone-caution { color: var(--warn); box-shadow: inset 0 0 0 999px color-mix(in oklab, var(--warn) 12%, transparent); }
+.ovp-table td.ovp-tone-bad { color: var(--down-text); box-shadow: inset 0 0 0 999px color-mix(in oklab, var(--down) 14%, transparent); }
+.ovp-table td.ovp-wait { color: var(--text-faint); }
+.ovp-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 6px 10px 0; font-size: 10.5px; }
+.ovp-key span { display: inline-flex; align-items: center; gap: 4px; }
+.ovp-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
+.ovp-sw.ovp-tone-good { background: var(--up-text); }
+.ovp-sw.ovp-tone-caution { background: var(--warn); }
+.ovp-sw.ovp-tone-bad { background: var(--down-text); }
+
+/* The trade card. It stays inside the visible width of the window while the table scrolls
+   sideways under it. */
+.ovp-scroll { container-type: inline-size; }
+.ovp-card { position: sticky; left: 10px; max-width: calc(100cqw - 20px); }
+.ovp-card .ovp-details-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.ovp-card .ovp-details-head b { color: var(--text); font-size: 13px; }
+.ovp-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; align-items: start; }
+.ovp-box { padding: 6px 8px 8px; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--panel); min-width: 0; }
+.ovp-box h4, .ovp-group h5 { margin: 0 0 4px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
+.ovp-box .ovp-dl { grid-template-columns: 1fr; }
+.ovp-box-note { margin: 2px 0 0; font-size: 10.5px; line-height: 1.35; }
+.ovp-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; min-width: 0; }
+.ovp-tile { display: flex; flex-direction: column; gap: 1px; padding: 5px 8px 6px; border: 1px solid var(--border-soft); border-left-width: 3px; border-radius: 5px; background: var(--panel); min-width: 0; }
+.ovp-tile-k { font-size: 10.5px; color: var(--text-faint); }
+.ovp-tile-v { font-size: 14px; font-weight: 600; color: var(--text); }
+.ovp-tile-w { font-size: 11px; line-height: 1.35; color: var(--text-dim); }
+.ovp-tile.ovp-tone-good { border-left-color: var(--up); background: color-mix(in oklab, var(--up) 8%, var(--panel)); }
+.ovp-tile.ovp-tone-good .ovp-tile-v { color: var(--up-text); }
+.ovp-tile.ovp-tone-caution { border-left-color: var(--warn); background: color-mix(in oklab, var(--warn) 9%, var(--panel)); }
+.ovp-tile.ovp-tone-caution .ovp-tile-v { color: var(--warn); }
+.ovp-tile.ovp-tone-bad { border-left-color: var(--down); background: color-mix(in oklab, var(--down) 10%, var(--panel)); }
+.ovp-tile.ovp-tone-bad .ovp-tile-v { color: var(--down-text); }
+.ovp-all { margin-top: 8px; }
+.ovp-all summary { cursor: pointer; font-size: 11.5px; color: var(--text-dim); }
+.ovp-all summary:hover { color: var(--text); }
+.ovp-group { margin-top: 8px; }
+
+/* The level ladder (TradeCard.tsx). */
+.ovp-ladder { display: block; font-size: 10.5px; }
+.ovp-ladder text { fill: var(--text-dim); }
+.ovp-ladder line { stroke: var(--text-faint); fill: none; }
+.ovp-ladder .ovp-lad-axis { stroke: var(--border); }
+.ovp-ladder .ovp-lad-lead { stroke: var(--border); }
+.ovp-ladder .ovp-lad-bar-pm { fill: var(--ind-pm); opacity: .75; }
+.ovp-ladder .ovp-lad-bar-pd { fill: var(--ind-pd); opacity: .45; }
+.ovp-ladder .ovp-lad-bar-fm { fill: var(--accent); opacity: .85; }
+.ovp-ladder .ovp-lad-pm line:first-child { stroke: var(--ind-pm); }
+.ovp-ladder .ovp-lad-pm text { fill: var(--ind-pm); }
+.ovp-ladder .ovp-lad-fm line:first-child { stroke: var(--accent); stroke-width: 2; }
+.ovp-ladder .ovp-lad-fm text, .ovp-ladder .ovp-lad-open text { fill: var(--accent); }
+.ovp-ladder .ovp-lad-open circle { fill: var(--accent); }
+.ovp-ladder .ovp-lad-last circle { fill: var(--text); }
+.ovp-ladder .ovp-lad-last text { fill: var(--text); }
+.ovp-ladder .ovp-lad-atr text { fill: var(--text-faint); font-size: 9.5px; }

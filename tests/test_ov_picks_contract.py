@@ -4,6 +4,7 @@ sample day folders that the module and Edge Scanner both build on.
 Every rule is checked with a record where it must fire and one where it must not.
 Nothing here needs the module's pinned libraries, and nothing reaches the network.
 """
+import copy
 import json
 import socket
 import subprocess
@@ -113,7 +114,11 @@ def test_contract_doc_names_every_field_and_state():
              | {c.PICKS_FILE, c.SETTLED_FILE, c.PARITY_FILE, c.PREVIEW_FILE, c.STATUS_FILE}
              | {c.KIND_PICKS, c.KIND_SETTLED, c.KIND_PARITY, c.KIND_PREVIEW, c.KIND_HISTORY, c.KIND_STATUS}
              | {"HISTORY_DIR", "HISTORY_SUFFIX", "HISTORY_OV_REBUILD", "HISTORY_OV_LIVE"}
-             | {"MAX_PICKS", "MAX_ROWS", "MAX_METRICS", "MAX_DETAILS", "MAX_TEXT_LEN", "MAX_FILE_BYTES"})
+             | {"MAX_PICKS", "MAX_ROWS", "MAX_METRICS", "MAX_DETAILS", "MAX_TEXT_LEN", "MAX_FILE_BYTES"}
+             | set(c.METRIC_FIELDS) | set(c.DETAIL_FIELDS) | set(c.LIVE_FIELDS) | set(c.BAND_FIELDS)
+             | set(c.TONES) | set(c.LIVE_KINDS) | set(c.OPEN_VS_PM_VALUES) | set(c.LEVEL_FIELDS)
+             | {"METRIC_FIELDS", "DETAIL_FIELDS", "LIVE_FIELDS", "BAND_FIELDS", "LEVEL_FIELDS", "MAX_BANDS", "TONES",
+                "LIVE_KINDS", "OPEN_VS_PM_VALUES"})
     missing = sorted(n for n in names if f"`{n}`" not in doc)
     assert missing == []
 
@@ -510,7 +515,9 @@ def test_the_reader_ignores_unknown_fields(tmp_path):
     view = c.read_day(tmp_path, DAY)
     assert view["has_picks"] is True
     assert "future_field" not in view
-    assert all(set(p) == set(c.PICK_FIELDS) for p in view["picks"])
+    # A row written without the optional fields (name, levels, tone, note, live, group) reads
+    # back without them (2026-11-07, "What a value means").
+    assert all(set(p) == set(c.PICK_REQUIRED) for p in view["picks"])
     assert all(set(e) == set(c.ENTRY_FIELDS) for p in view["picks"] for e in p["details"] + p["metrics"])
     assert view["picks"] == _rows()
 
@@ -944,6 +951,8 @@ SAMPLE_CASES = {
     "preview": (False, None, None, None, None, [], 0, None, None),
     # The shadow sample's day, plus OV's past days in history/ (owner, 2026-11-07).
     "past_days": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.SETTLED_SAME, c.PENDING),
+    # The owner's layout (2026-11-07): tones, notes, live columns, groups and levels, plus one past day.
+    "meanings": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 8, c.SETTLED_SAME, c.PENDING),
 }
 # The warmup state of each sample without picks: still warming, or ready with a preview showing.
 NO_PICKS_WARMUP = {"warming": c.WARMING, "preview": c.DATA_READY}
@@ -1057,5 +1066,133 @@ def test_the_past_days_sample_shows_ovs_past_days_beside_the_modules_own_day():
     assert c.read_day(folder, DAY)["has_picks"] is True
     assert c.read_history(folder, DAY)["reason_code"] == c.MISSING
     # No other sample has history.
-    for case in set(SAMPLE_CASES) - {"past_days"}:
+    for case in set(SAMPLE_CASES) - {"past_days", "meanings"}:
         assert c.history_days(SAMPLES / case) == [], case
+
+
+# ---------------------------------------------------------------- what a value means (2026-11-07)
+# The owner's layout "C1 + E1" (Ash, project thread, 2026-11-07): tones, notes, live columns,
+# detail groups and price levels, all optional.
+
+FIRST_MINUTE = {"kind": c.LIVE_FIRST_MINUTE_RANGE_ATR, "bands": [
+    {"max": 0.2, "tone": c.TONE_GOOD, "note": "Made-up note: tight."},
+    {"min": 0.6, "tone": c.TONE_BAD, "note": "Made-up note: wide."},
+    {"note": "Made-up note: in between."}]}
+OPEN_VS_PM = {"kind": c.LIVE_OPEN_VS_PM_RANGE, "bands": [
+    {"is": c.OPEN_ABOVE, "note": "Made-up note: above."}, {"is": c.OPEN_INSIDE}]}
+
+
+def _meaningful_pick(rank, ticker):
+    pick = _pick(rank, ticker, metrics=[
+        {"label": "Price", "value": 10.5, "tone": c.TONE_CAUTION, "note": "Made-up note."},
+        {"label": "Gap %", "value": None, "live": copy.deepcopy(FIRST_MINUTE)},
+    ], details=[
+        {"label": "Ticker", "value": ticker, "group": "At a glance"},
+        {"label": "Sector", "value": "Tech", "group": "Company"},
+        {"label": "Note", "value": None},
+    ])
+    pick.update(name=f"{ticker} Inc", levels={"atr": 1.25, "pm_high": 11.0, "pm_low": 9.75, "last": None})
+    return pick
+
+
+def _meaningful_record(**over):
+    rows = [_meaningful_pick(i + 1, t) for i, t in enumerate(TICKERS)]
+    return _record(picks=rows, **over)
+
+
+def test_a_row_with_tones_notes_live_columns_groups_and_levels_reads_back_unchanged(tmp_path):
+    rec = _meaningful_record()
+    assert c.validate_picks(rec) == []
+    c.write_picks(tmp_path, rec)
+    view = c.read_day(tmp_path, DAY)
+    assert view["has_picks"] is True
+    first = view["picks"][0]
+    assert first["name"] == "AAAA Inc"
+    # A null level is left out when written, like any optional field without a value.
+    assert first["levels"] == {"atr": 1.25, "pm_high": 11.0, "pm_low": 9.75}
+    assert first["metrics"][0] == {"label": "Price", "value": 10.5, "tone": "caution", "note": "Made-up note."}
+    assert first["metrics"][1] == {"label": "Gap %", "value": None, "live": FIRST_MINUTE}
+    assert [d.get("group") for d in first["details"]] == ["At a glance", "Company", None]
+
+
+def test_the_open_vs_pm_kind_takes_text_bands():
+    rec = _meaningful_record()
+    rec["picks"][0]["metrics"][1]["live"] = OPEN_VS_PM
+    assert c.validate_picks(rec) == []
+
+
+@pytest.mark.parametrize("change, words", [
+    (lambda m: m[0].update(tone="green"), "tone must be one of"),
+    (lambda m: m[0].update(note="x" * (c.MAX_TEXT_LEN + 1)), "note must be text"),
+    (lambda m: m[1].update(value=0.4), "a live metric is filled by Edge Scanner"),
+    (lambda m: m[1]["live"].update(kind="vwap_distance"), "kind must be one of"),
+    (lambda m: m[1]["live"].update(bands=[{"min": 0.5, "max": 0.2}]), "min 0.5 is above max 0.2"),
+    (lambda m: m[1]["live"].update(bands=[{"is": "above"}]), "is must be null"),
+    (lambda m: m[1]["live"].update(bands=[{"note": "n"}] * (c.MAX_BANDS + 1)), "at most 8 bands"),
+    (lambda m: m[1]["live"].update(bands=[{"min": "0.5"}]), "min must be a finite number"),
+    (lambda m: m[1]["live"].update(bands=[{"tone": "red"}]), "tone must be one of"),
+    (lambda m: m[1]["live"].update(extra=1), "extra is not a field"),
+    (lambda m: m[1].update(live=OPEN_VS_PM | {"bands": [{"is": "sideways"}]}), "is must be one of"),
+    (lambda m: m[1].update(live=OPEN_VS_PM | {"bands": [{"min": 1.0}]}), "min and max must be null"),
+    (lambda m: m[1].update(live="first_minute_range_atr"), "must be a JSON object with kind and bands"),
+    (lambda m: m[0].update(group="At a glance"), "group is not a field"),
+])
+def test_a_bad_tone_note_or_live_column_is_refused_by_the_writer(change, words):
+    rec = _meaningful_record()
+    change(rec["picks"][0]["metrics"])
+    problems = c.validate_picks(rec)
+    assert any(words in p for p in problems), problems
+
+
+@pytest.mark.parametrize("change, words", [
+    (lambda p: p.update(name="  "), "name must be text"),
+    (lambda p: p.update(levels={"atr": "1.2"}), "levels.atr must be a finite number"),
+    (lambda p: p.update(levels={"vwap": 1.0}), "levels.vwap is not a field"),
+    (lambda p: p.update(levels=[1.0]), "levels must be a JSON object"),
+    (lambda p: p["details"][0].update(group=""), "group must be text"),
+    (lambda p: p["details"][0].update(tone="good"), "tone is not a field"),
+])
+def test_a_bad_name_level_or_group_is_refused_by_the_writer(change, words):
+    rec = _meaningful_record()
+    change(rec["picks"][0])
+    problems = c.validate_picks(rec)
+    assert any(words in p for p in problems), problems
+
+
+def test_null_optional_fields_are_allowed_and_written_as_left_out(tmp_path):
+    rec = _meaningful_record()
+    for pick in rec["picks"]:
+        pick.update(name=None, levels=None)
+        pick["metrics"][0].update(tone=None, note=None)
+    assert c.validate_picks(rec) == []
+    c.write_picks(tmp_path, rec)
+    first = c.read_day(tmp_path, DAY)["picks"][0]
+    assert "name" not in first and "levels" not in first
+    assert first["metrics"][0] == {"label": "Price", "value": 10.5}
+
+
+def test_a_reader_shows_a_newer_writers_tone_and_live_kind_and_takes_a_filled_live_value(tmp_path):
+    # A newer version may add a tone or a kind; this reader passes it on as written.
+    rec = {"schema_version": c.SCHEMA_VERSION + 1, "kind": c.KIND_PICKS, **_meaningful_record()}
+    rec["picks"][0]["metrics"][0]["tone"] = "neutral"
+    rec["picks"][0]["metrics"][1].update(value=0.4, live={**FIRST_MINUTE, "kind": "vwap_distance"})
+    _write_json(tmp_path / DAY / c.PICKS_FILE, rec)
+    view = c.read_day(tmp_path, DAY)
+    assert view["has_picks"] is True, view["reason"]
+    assert view["picks"][0]["metrics"][0]["tone"] == "neutral"
+    assert view["picks"][0]["metrics"][1]["live"]["kind"] == "vwap_distance"
+    # The same file at this version is refused: the tone is not one this reader knows.
+    rec["schema_version"] = c.SCHEMA_VERSION
+    _write_json(tmp_path / DAY / c.PICKS_FILE, rec)
+    assert c.read_day(tmp_path, DAY)["reason_code"] == c.INVALID
+
+
+def test_the_meanings_sample_shows_every_optional_field_on_a_day_and_a_past_day():
+    folder = SAMPLES / "meanings"
+    assert c.history_days(folder) == ["2026-11-04"]
+    for rows in (c.read_day(folder, DAY)["picks"], c.read_history(folder, "2026-11-04")["picks"]):
+        assert all(p["name"] and set(p["levels"]) == set(c.LEVEL_FIELDS) for p in rows)
+        live = [m["live"]["kind"] for m in rows[0]["metrics"] if "live" in m]
+        assert live == [c.LIVE_FIRST_MINUTE_RANGE_ATR, c.LIVE_OPEN_VS_PM_RANGE]
+        assert {m.get("tone") for p in rows for m in p["metrics"]} >= set(c.TONES) - {c.TONE_BAD}
+        assert all(d.get("group") for p in rows for d in p["details"])

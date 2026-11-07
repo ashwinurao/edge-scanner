@@ -235,7 +235,7 @@ while dragging to turn off snapping.
 | **Watchlist** | Editable symbol lists with live columns |
 | **Clock** | Eastern time, session phase, market regime, SPY and feed health |
 | **Setup check** | For one symbol, what every setup did over the last few minutes and which condition passed or failed. Use it to answer "why did (or didn't) this alert fire?" |
-| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, a row click sends the ticker to linked charts and news, ▸ shows the row's full details, the day's flags, and why there are no picks yet. From 09:00 to 09:25 ET, a preview of the list as of the latest minute. A calendar shows past days: a row click there sends that day too, and the "OV picks" watchlist holds that day's top picks. Display only. See [The OV picks window](#the-ov-picks-window) |
+| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, a row click sends the ticker to linked charts and news, ▸ shows the row's details (a trade card with levels and notes when the module sends them), the day's flags, and why there are no picks yet. From 09:00 to 09:25 ET, a preview of the list as of the latest minute. A calendar shows past days: a row click there sends that day too, and the "OV picks" watchlist holds that day's top picks. Display only. See [The OV picks window](#the-ov-picks-window) |
 
 ### Linking windows
 
@@ -311,15 +311,40 @@ rest of the list.
   `ov_picks/CONTRACT.md`), in its order and with its labels. The window adds no column of its
   own. Numbers are right-aligned: whole numbers with thousands separators, others to two
   decimals (up to four below 1). A dash means no value.
+- **Coloured cells** (the owner's layout "C1 + E1", 2026-11-07). The module can mark a value
+  good (green), caution (amber) or a warning (red), and say in one line what it means. Hover a
+  cell to read that line. A key under the table lists the colours in use. The module decides
+  the colours from its research; the window only shows them.
+- **Columns that fill after the open** have "09:31" under their header. The scanner fills them
+  from the day's 09:30 ET minute bar: the first minute's range in ATR, and the open against the
+  pre-market range (**▲ above** the pre-market high, **▼ below** its low, or **inside**). Until
+  09:31 ET they show a dash, and the tooltip says when they fill. They also stay blank, with
+  the reason in the tooltip, when the scanner has no Alpaca feed, a request fails (it asks again
+  within a minute; **Refresh** shows the result), or a name had no trade in the 09:30 minute.
+  A past day fills them from that day's bar. The scanner asks Alpaca once per day shown and
+  keeps the answer (`scanner/ov_picks_live.py`).
 
 **Click a row** (or focus it and press Enter) to show its ticker in the window's linked charts
 and news, like a watchlist row (the owner's request, 2026-11-07). The row stays marked, so you
 can see which name the charts show. In a window without a link color the click does nothing
 else.
 
-**Click the ▸ arrow** at the left of a row to open its full details under it: every field the
-module wrote for that name, label and value, with numbers as written. Click ▾ to close them.
-One row is open at a time.
+**Click the ▸ arrow** at the left of a row to open its details under it. Click ▾ to close them.
+One row is open at a time. When the module says what the row's values mean, the details are a
+**trade card** (the owner's layout "E1", 2026-11-07):
+
+- the name, rank, status and earnings label on one line;
+- **Levels**: the row's prices on one scale, highest at the top: the pre-market high and low
+  (orange bar), the prior day's high, low and close (grey bar), the last pre-market price and,
+  after 09:31 ET, the first minute's high, low and open (blue bar). A bracket on the left shows
+  one ATR on the same scale;
+- a **tile** for each number the module explains, coloured like its cell, with the module's
+  note; the first-minute tiles also give the dollar width and where the open was;
+- the module's first group of fields (for example "At a glance");
+- **All fields, grouped**: every other field the module wrote, under the module's group names.
+
+A module file without these shows the plain list instead: every field the module wrote for
+that name, label and value, with numbers as written.
 
 **Notes under the table**, when they apply:
 
@@ -544,7 +569,7 @@ filters more to choose from but costs more CPU per minute and a longer first dow
 | `scripts/compare_universes.py` | Builds two universes and explains every difference |
 | `start_scanner.bat`, `start_scanner.sh` | Launchers for Windows and for macOS / Linux (section 3) |
 | `restart_scanner.bat` | Stops a running scanner and starts it again (Windows) |
-| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`; a preview: `--sample preview --at "2026-11-05 09:14:30"`; past days: `--sample past_days --at "2026-11-05 10:40" --demo-market`, which adds a linked chart and news window on made-up bars and headlines) |
+| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`; a preview: `--sample preview --at "2026-11-05 09:14:30"`; past days: `--sample past_days --at "2026-11-05 10:40" --demo-market`, which adds a linked chart and news window on made-up bars and headlines; coloured cells, the columns that fill after the open and the trade card: `--sample meanings --at "2026-11-05 10:40" --demo-market`) |
 
 ### build_universe.py
 

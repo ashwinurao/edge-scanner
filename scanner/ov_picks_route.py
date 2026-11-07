@@ -52,6 +52,16 @@ The answer always has every key in ROUTE_FIELDS:
 - warnings: route-level warnings. The day's and the status file's own warnings stay
   inside those views.
 
+The views are the contract readers' own, with one addition: the live columns. A metric
+the module marks `live` (ov_picks/CONTRACT.md, "Live metrics") is null in the file; the
+route fills its value, tone and note from the day's 09:30 ET minute bar, and adds that
+bar to each such row as `first_minute` (null without one). A row without a live column is
+served as read. That
+bar is the route's only network call: one cached Alpaca request per day shown, after 09:31
+ET (Ash's go, project thread, 2026-11-07; scanner/ov_picks_live.py). A failed request
+leaves the cells blank with a note that says so; a failure while filling them adds a
+warning. The picks show either way.
+
 GET /api/v2/ov-picks/days lists the days that have picks, for the window's previous
 and next-day buttons, oldest first: each day folder up to today with a picks file, and
 each day up to today with a history file (contract.history_days). It checks only that
@@ -76,7 +86,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
-from scanner import past_day
+from scanner import ov_picks_live, past_day
 from scanner.ov_picks_day import register_morning
 
 log = logging.getLogger(__name__)
@@ -107,14 +117,19 @@ _DAY_NAME = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def register(app: FastAPI, app_state: Any,
-             clock: Optional[Callable[[], datetime]] = None) -> None:
+             clock: Optional[Callable[[], datetime]] = None,
+             first_minute_fetch: Optional[ov_picks_live.Fetch] = None) -> None:
     """Add GET /api/v2/ov-picks and its days list to `app`, and the day watchlist and
     notice (ticket #20).
 
     `clock` returns an aware datetime (tests and scripts/ov_picks_demo.py pass a fake).
+    `first_minute_fetch` asks for the live columns' 09:30 ET bars; by default the
+    scanner's Alpaca feed does (scanner/ov_picks_live.py). Tests and the demo pass a fake.
     """
     now = clock or (lambda: datetime.now(_ET))
     register_morning(app, app_state, clock=clock)
+    bars = ov_picks_live.FirstMinuteBars(
+        first_minute_fetch or ov_picks_live.alpaca_fetch(getattr(app_state, "feed", None)))
 
     # A plain def: FastAPI runs it in a worker thread, so the file reads never block the
     # event loop that serves /ws/alerts.
@@ -130,6 +145,7 @@ def register(app: FastAPI, app_state: Any,
             body = _base(at)
             body.update(set_up=bool((setting or "").strip()), reason_code=ERROR,
                         asked_date=asked.strip() or None, reason=_error_reason(exc))
+        fill_live(body, bars, at)
         return JSONResponse(body)
 
     @app.get(DAYS_ROUTE)
@@ -144,6 +160,17 @@ def register(app: FastAPI, app_state: Any,
                         reason=_error_reason(exc), today_et=at.astimezone(_ET).date().isoformat(),
                         days=[])
         return JSONResponse(body)
+
+
+def fill_live(body: dict, bars: ov_picks_live.FirstMinuteBars, now: datetime) -> None:
+    """Fill the answer's live columns in place (scanner/ov_picks_live.py). A failure leaves
+    the picks as read and says so in a warning."""
+    try:
+        ov_picks_live.fill_answer(body, bars, now.astimezone(_ET))
+    except Exception as exc:
+        log.exception("ov_picks_route: filling the live columns failed")
+        body["warnings"].append(f"The columns that fill after the open could not be filled "
+                                f"({type(exc).__name__}: {exc}). The picks show as the module wrote them.")
 
 
 def _error_reason(exc: Exception) -> str:
@@ -309,7 +336,8 @@ def _et_time(text: Optional[str]) -> Optional[datetime]:
 def _market_closed(contract, out_dir: Path, jobs: dict, today: date) -> tuple[Optional[bool], str]:
     """Whether today (ET) has no session, from the clock and the module's records only.
 
-    Edge Scanner has no holiday calendar, and this route makes no network call. The
+    Edge Scanner has no holiday calendar, and this route asks the network for nothing
+    but the live columns' bars (scanner/ov_picks_live.py). The
     module's runner skips weekends and Alpaca-calendar holidays, except the Saturday
     reference job, and sets each job's next_at from that calendar (spec "Runner"). So a
     day job that ran today means a trading day, and a scan scheduled past today with no

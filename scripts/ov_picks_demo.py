@@ -20,7 +20,11 @@ demo port 7787 by default, and makes no network call.
 
 --demo-market adds a linked chart and a linked news window, fed with made-up bars and
 headlines (every headline says "Demo"), so a click on a past day's ticker can be seen
-end to end (the calendar, Ash, 2026-11-07). Without it the demo has no data feed.
+end to end (the calendar, Ash, 2026-11-07). It also makes up each row's 09:30 ET bar
+from the row's levels, so the columns that fill after the open (scanner/ov_picks_live.py)
+show values and tones. Without it the demo has no data feed and those cells stay blank.
+
+    python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 10:40" --demo-market
 """
 from __future__ import annotations
 
@@ -143,6 +147,37 @@ def _demo_wire(url, headers, params, timeout):
     return _DemoResp({"news": news})
 
 
+def _demo_first_minute(out_dir: Path):
+    """A made-up 09:30 ET bar per row, from its levels: the same on every run, and spread
+    so the demo shows tight and wide first minutes, and opens above, inside and below the
+    pre-market range."""
+    from ov_picks import contract
+
+    def fetch(day: date, tickers: list[str]) -> dict:
+        view = contract.read_day(out_dir, day)
+        if not view["has_picks"] and hasattr(contract, "read_history"):
+            view = contract.read_history(out_dir, day)
+        bars = {}
+        for row in view["picks"]:
+            lv = row.get("levels") or {}
+            if row["ticker"] not in tickers or not lv.get("atr") or lv.get("pm_high") is None:
+                continue
+            rng = random.Random(zlib.crc32(f"{row['ticker']}|{day}".encode()))
+            low_pm, high_pm = lv.get("pm_low", lv["pm_high"]), lv["pm_high"]
+            where = rng.choice(("above", "inside", "inside", "below"))
+            open_ = {"above": high_pm + 0.05 * lv["atr"], "below": low_pm - 0.05 * lv["atr"],
+                     "inside": (high_pm + low_pm) / 2}[where]
+            width = lv["atr"] * rng.choice((0.08, 0.18, 0.3, 0.42, 0.65, 0.9))
+            up = rng.random() < 0.5
+            high = open_ + (width if up else width * 0.2)
+            low = high - width
+            bars[row["ticker"]] = {"open": round(open_, 2), "high": round(high, 2), "low": round(low, 2),
+                                   "close": round(low + width * (0.8 if up else 0.2), 2)}
+        return bars
+
+    return fetch
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--sample", default="frozen",
@@ -181,7 +216,9 @@ def main() -> None:
     # create_app looks register up on the module when it runs (scanner/api.py, the fork
     # line), so the demo hands it the fake clock without a hook in the app itself.
     real_register = ov_picks_route.register
-    ov_picks_route.register = lambda app, app_state: real_register(app, app_state, clock=clock)
+    first_minute = _demo_first_minute(work / "out") if args.demo_market else None
+    ov_picks_route.register = lambda app, app_state: real_register(app, app_state, clock=clock,
+                                                                   first_minute_fetch=first_minute)
 
     # Set after the imports: scanner/data/alpaca.py loads .env on import and would override it.
     if args.unset:

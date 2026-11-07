@@ -84,8 +84,11 @@ Each row of `picks`:
 | `earnings_label` | text or null | `AMC` (reported after the prior close), `BMO` (reports before this open) or null. OV's earnings release timing. |
 | `metrics` | list of entries | The window's columns for this row: one entry per `metric_labels` label, in that order. |
 | `details` | list of entries | The full row, for a click on it: at most 200 entries (`MAX_DETAILS`), in the order the module writes them. |
+| `name` | text, optional | The company's name, at most 200 characters. Left out when unknown. |
+| `levels` | object, optional | The row's price levels (below). Left out when the module has none. |
 
-Each entry of `metrics` and `details` is an object with exactly two fields:
+Each entry of `metrics` and `details` is an object with two fields, plus the optional
+fields below:
 
 | Field | Type | Allowed values and rules |
 |---|---|---|
@@ -94,6 +97,65 @@ Each entry of `metrics` and `details` is an object with exactly two fields:
 
 The module decides which values go in `metrics` and `details`, and what each label says.
 Edge Scanner shows the labels and values as written and never reads meaning into them.
+
+### What a value means
+
+The owner's layout for the window, "C1 + E1" (Ash, project thread, 2026-11-07): the
+research numbers come first as columns, coloured where the research found an effect, and a
+click on ▸ opens a card with the row's price levels, its key numbers with one line each on
+what they mean, and every field in groups. The module says what each value means with these
+optional fields; an older reader ignores them. A writer leaves an optional field out when it
+has no value, so a row without them reads back unchanged.
+
+A metric (`METRIC_FIELDS`) may also carry:
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `tone` | text, optional | How the window colours the cell: `good` (`TONE_GOOD`), `caution` (`TONE_CAUTION`) or `bad` (`TONE_BAD`), all in `TONES`. Left out for no colour. |
+| `note` | text, optional | One line on what the value means, at most 200 characters. A metric with a note is one of the row's key numbers: the details card shows it as a tile with its note. |
+| `live` | object, optional | A column Edge Scanner fills after the open (below). Its `value` in the file is null. |
+
+A detail (`DETAIL_FIELDS`) may also carry:
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `group` | text, optional | The section of the details card the entry goes in. Not blank, at most 200 characters. The card shows the groups in the order they first appear, and the entries of a group in their order. The first group sits beside the key numbers; the rest open below. |
+
+A row's `levels` holds any of these (`LEVEL_FIELDS`), each a finite number or null, in the
+row's own price terms:
+
+| Field | Meaning |
+|---|---|
+| `atr` | The row's daily ATR (`LEVEL_ATR`). |
+| `prior_close`, `prior_high`, `prior_low` | The prior session's close, high and low. |
+| `pm_high`, `pm_low` | The pre-market high and low (`LEVEL_PM_HIGH`, `LEVEL_PM_LOW`). |
+| `last` | The last pre-market price. |
+
+#### Live metrics
+
+A live metric is a column the module places and Edge Scanner fills after the open, from the
+day's 09:30 ET minute bar and the row's `levels`. Edge Scanner fetches that bar once per day
+shown, on its own market-data keys (owner's go, 2026-11-07). Before 09:31 ET on the day, or
+without the bar or the levels it needs, the value stays null and the card says why.
+
+`live` has exactly these fields (`LIVE_FIELDS`):
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `kind` | text | What Edge Scanner fills, one of `LIVE_KINDS`: `first_minute_range_atr` (`LIVE_FIRST_MINUTE_RANGE_ATR`), the bar's high minus its low, divided by `levels.atr`, rounded to 2 decimals; or `open_vs_pm_range` (`LIVE_OPEN_VS_PM_RANGE`), the bar's open against `levels.pm_high` and `levels.pm_low`: `above` (`OPEN_ABOVE`), `below` (`OPEN_BELOW`) or `inside` (`OPEN_INSIDE`, edges included), all in `OPEN_VS_PM_VALUES`. |
+| `bands` | list | At most 8 (`MAX_BANDS`). What each value means: the first band the value falls in gives the cell its tone and its note. |
+
+Each band has these optional fields (`BAND_FIELDS`):
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `min` | number or null | A number value is in the band when it is at least this. Null: no lower bound. |
+| `max` | number or null | A number value is in the band when it is at most this. Null: no upper bound. Not below `min`. |
+| `is` | text or null | A text value is in the band when it equals this. For `first_minute_range_atr` it is null; for `open_vs_pm_range`, `min` and `max` are null and `is` is one of `OPEN_VS_PM_VALUES`. |
+| `tone` | text or null | One of `TONES`, or null for no colour. |
+| `note` | text or null | One line on what the value means, at most 200 characters. |
+
+A band with no `min`, `max` or `is` takes any value: put it last, as the default.
 
 Rules between fields:
 
@@ -272,7 +334,9 @@ bad entry is left out with a warning, and the other entries still read.
   means. Version 1 gained the preview file and the `preview` job without a new version:
   no existing record changed, and a reader that predates them keeps the `preview` status
   entry as written. It gained the history file the same way: a reader that predates it
-  never opens `history/`. A version that adds a field older files lack adds an upgrade step to
+  never opens `history/`. It gained the optional fields of "What a value means" (2026-11-07)
+  the same way: a file without them is unchanged, and a reader that predates them ignores
+  them. A version that adds a field older files lack adds an upgrade step to
   `_UPGRADES` in `ov_picks/contract.py`, so saved days keep loading (spec US67;
   CONTRIBUTING.md "Saved work survives").
 
@@ -298,4 +362,5 @@ passes the writer's checks and reads as described.
 | `older_schema` | A schema version 1 picks file, no status file. Never edit it once version 1 has shipped. When `SCHEMA_VERSION` goes above 1, it is the older-version sample, and the test reads it with the newer reader. |
 | `warming` | 08:50 ET: `status.json` says `WARMING`, and there is no picks file yet. |
 | `past_days` | The `shadow` sample's day, plus OV's past days in `history/`: 2026-11-03 from `ov_rebuild` and 2026-11-04 from `ov_live`, 6 rows each, the first 4 marked `top`. |
+| `meanings` | The owner's layout "C1 + E1" (2026-11-07): the `shadow` sample's day with 8 rows, the first 4 marked `top`, and 12 metrics with tones, notes and two live columns (`first_minute_range_atr`, `open_vs_pm_range`); every row has a name, levels, and details in groups. Plus one past day in `history/`, 2026-11-04 from `ov_rebuild`. The notes say "Sample note" and the band edges are made up. |
 | `preview` | 09:14 ET in the shadow run: `status.json` says the warmup is `DATA_READY` and the preview job `PREVIEWED`; `preview.json` is as of 09:14 ET with 6 rows, the first 4 marked `top`. No picks file yet. |

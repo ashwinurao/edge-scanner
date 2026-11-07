@@ -281,6 +281,19 @@ scanner shows the day's picks. It never writes that folder.
   `GET /api/bars/{symbol}/{timeframe}` and `GET /api/v2/news` (`scanner/past_day.py`);
   `GET /api/v2/ov-picks/days` lists the days. Without `date` every route is unchanged. Past
   days use the same Alpaca calls with an earlier end; there is no new source.
+- **What each value means** (the owner's layout "C1 + E1", 2026-11-07). The module can give a
+  cell a tone (good, caution, warning) and a one-line note, group the row's details, and send
+  the row's price levels (`ov_picks/CONTRACT.md`, "What a value means"). The window colours the
+  cell and shows the note on hover; the ▸ arrow then opens a trade card: a ladder of the row's
+  levels, a tile with the note for each explained number, the first group of fields, and every
+  field grouped behind "All fields". This repo holds no research numbers: the module decides
+  what each value means.
+- **Columns that fill after the open.** A column the module marks `live` is filled by the
+  scanner from the day's 09:30 ET minute bar: the first minute's range in ATR, and where the
+  open sits against the pre-market range. The route asks Alpaca once per day shown, for that
+  day's ranked tickers, after 09:31 ET, and keeps the answer (the owner's go, 2026-11-07;
+  `scanner/ov_picks_live.py`). Before 09:31 ET, without an Alpaca feed, or when the request
+  fails, the cells stay blank and say why. Past days fill the same way, from that day's bar.
 - A name outside the scanner's universe gets no live bars and no setups. The universe is built at
   startup and a watchlist does not add to it, so the window marks that name "no setups".
 - Each trading morning, when the picks freeze, the scanner fills a watchlist called "OV picks"
@@ -292,7 +305,8 @@ scanner shows the day's picks. It never writes that folder.
   `python scripts/ov_picks_demo.py --sample frozen` shows the window on a sample day, on
   127.0.0.1:7787, without keys or market data (`--sample preview --at "2026-11-05 09:14:30"` for
   a preview; `--sample past_days --at "2026-11-05 10:40" --demo-market` for the calendar, with a
-  linked chart and news window on made-up data).
+  linked chart and news window on made-up data; `--sample meanings --at "2026-11-05 10:40"
+  --demo-market` for coloured cells, the columns that fill after the open and the trade card).
 
 **The module on a home server.** The module runs as the `ov-picks` service in `compose.yaml`.
 Compose builds its image from a local clone of the private repo. The service is off unless

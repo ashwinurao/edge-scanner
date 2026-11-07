@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ov_picks import contract as c
+from scanner import ov_picks_live
 from scanner import ov_picks_route as route
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -214,6 +215,10 @@ ROUTE_CASES = {
     # The shadow sample's day, with OV's past days in history/: today's answer is the same.
     "past_days": ("2026-11-05 09:30", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
                   TOP, 6, c.SETTLED_SAME, c.PENDING, NEXT_SCAN),
+    # Rows with tones, notes, live columns, groups and levels (the window's "C1 + E1"
+    # layout, 2026-11-07). After the open, with no feed here: the live cells say so.
+    "meanings": ("2026-11-05 10:40", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
+                 TOP, 8, c.SETTLED_SAME, c.PENDING, NEXT_SCAN),
 }
 # The warmup state of each sample day without picks.
 NO_PICKS_WARMUP = {"warming": c.WARMING, "preview": c.DATA_READY}
@@ -234,8 +239,12 @@ def test_the_route_serves_each_sample_day(monkeypatch, case):
     assert (body["today_et"], body["trading_date"], body["is_today"]) == (DAY, DAY, True)
     assert body["market_closed"] is False, body["market_note"]
     assert body["next_scan_at"] == next_scan
-    # The day and the status are the contract readers' views, unchanged.
-    assert body["day"] == c.read_day(folder, DAY)
+    # The day and the status are the contract readers' views, unchanged but for the live
+    # columns (scanner/ov_picks_live.py): this test's scanner has no feed. A sample
+    # without live columns is served exactly as read.
+    want = c.read_day(folder, DAY)
+    ov_picks_live.fill(want["picks"], ov_picks_live.Lookup(no_feed=True))
+    assert body["day"] == want
     assert body["status"] == c.read_status(folder)
     day = body["day"]
     assert day["has_picks"] is has, day["reason"]

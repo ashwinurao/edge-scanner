@@ -11,16 +11,21 @@
 // before the module ran, OV's own list from the history files. A click on a row there
 // sends that day with the ticker, so the linked charts and news show the stock as it was
 // then, and the "OV picks" watchlist holds that day's top picks until Today.
+// Each cell takes the tone and note the module gives it, and the columns that fill after
+// the open say so; the ▸ arrow opens a trade card when the module sends levels, notes or
+// groups (Ash, 2026-11-07, layout "C1 + E1"; card.ts, TradeCard.tsx).
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { usePoll } from '../../lib/usePoll'
 import { DASH } from '../../lib/format'
 import { linkSymbol } from '../../stores/linkStore'
 import { useWatchlists } from '../../stores/watchlistsStore'
 import { Empty } from '../../components/primitives'
-import type { OvEntry, OvPick, OvPicksAnswer, OvPicksConfig, OvPicksHistory, OvPicksPreview } from './types'
+import type { OvPick, OvPicksAnswer, OvPicksConfig, OvPicksHistory, OvPicksPreview } from './types'
+import { KIND_RANGE_ATR, fmtCell, hasMeanings, liveKind, metricOf, toneClass } from './card'
+import { FieldList, TradeCard } from './TradeCard'
 import { fetchOvPicks, fetchOvPicksDays, fillOvPicksWatchlist, syncOvPicksWatchlist, watchlistHas } from './api'
 import { OV_PICKS_DAYS_POLL_MS, OV_PICKS_PAST_POLL_MS, OV_PICKS_POLL_MS, OV_PICKS_WATCHLIST_ID } from './defaults'
-import { allWarnings, badges, dayLabel, dayNotes, fmtValue, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, topPicks, wholeColumn, whenET, type Note } from './view'
+import { allWarnings, badges, dayLabel, dayNotes, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, topPicks, wholeColumn, whenET, type Note } from './view'
 import './ovpicks.css'
 
 // After the card first sees the day's picks, the scanner's watcher can take a few seconds
@@ -36,12 +41,10 @@ function Warnings({ a }: { a: OvPicksAnswer }) {
   return <Notes notes={ws.map(text => ({ tone: 'warn' as const, text }))} />
 }
 
-// Details show each value as the module wrote it: whole numbers get thousands separators,
-// other numbers keep every digit.
-const fmtDetail = (v: OvEntry['value']) =>
-  typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v) ? String(v) : fmtValue(v)
-
+/** A row's details: the trade card when the module says what its values mean, else every
+ *  field as the module wrote it. */
 function Details({ p }: { p: OvPick }) {
+  if (hasMeanings(p)) return <div className="ovp-details"><TradeCard p={p} /></div>
   return (
     <div className="ovp-details">
       <div className="ovp-details-head">
@@ -50,16 +53,22 @@ function Details({ p }: { p: OvPick }) {
       </div>
       {p.details.length === 0
         ? <div className="faint ovp-details-none">The module sent no details for this row.</div>
-        : (
-          <dl className="ovp-dl">
-            {p.details.map((d, i) => (
-              <div key={i} className="ovp-dl-item">
-                <dt title={d.label}>{d.label}</dt>
-                <dd className={typeof d.value === 'number' ? 'mono' : ''}>{fmtDetail(d.value)}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
+        : <FieldList entries={p.details} />}
+    </div>
+  )
+}
+
+/** Under a table with coloured cells: what the colours are. The module says what each one
+ *  means, in the cell's tooltip. */
+function ToneKey({ picks }: { picks: OvPick[] }) {
+  const tones = new Set(picks.flatMap(p => p.metrics.map(m => m.tone).filter(Boolean)))
+  if (!tones.size) return null
+  return (
+    <div className="ovp-key faint">
+      {tones.has('good') && <span><i className="ovp-sw ovp-tone-good" />good</span>}
+      {tones.has('caution') && <span><i className="ovp-sw ovp-tone-caution" />caution</span>}
+      {tones.has('bad') && <span><i className="ovp-sw ovp-tone-bad" />warning</span>}
+      <span>as the OV picks module marks them; hover a cell for what it means.</span>
     </div>
   )
 }
@@ -83,8 +92,9 @@ interface TableProps {
 /** The ranked list: the frozen picks, a preview of them, or a past day's list. A click on a
  *  row sends its ticker to the linked windows; the ▸ arrow opens its details. */
 function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTicker, pick, topTitle, linkDay }: TableProps) {
-  // A column of numbers is right-aligned, header included.
-  const numeric = labels.map(l => picks.some(p => typeof metricValue(p, l) === 'number'))
+  // A column of numbers is right-aligned, header included. A live column says when it fills.
+  const kinds = labels.map(l => liveKind(picks, l))
+  const numeric = labels.map((l, i) => kinds[i] === KIND_RANGE_ATR || picks.some(p => typeof metricValue(p, l) === 'number'))
   const whole = labels.map(l => wholeColumn(picks, l))
   const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, ticker: string) => {
     if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
@@ -99,7 +109,11 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
       <thead>
         <tr>
           <th className="ovp-tk">Ticker</th>
-          {labels.map((l, i) => <th key={l} className={numeric[i] ? 'num' : ''}>{l}</th>)}
+          {labels.map((l, i) => (
+            <th key={l} className={numeric[i] ? 'num' : ''} title={kinds[i] ? 'Fills after the open, from the 09:30 ET minute bar (at 09:31 ET)' : undefined}>
+              {l}{kinds[i] && <span className="ovp-when">09:31</span>}
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
@@ -120,7 +134,11 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
                   {p.earnings_label && <span className="badge ovp-b-info ovp-tag" title="Earnings label">{p.earnings_label}</span>}
                   {outside && <span className="badge ovp-b-warn ovp-tag" title="Not in the scanner's universe: no live bars and no setups. Charts still work.">no setups</span>}
                 </td>
-                {labels.map((l, j) => <td key={l} className={numeric[j] ? 'num mono' : ''}>{fmtValue(metricValue(p, l), whole[j])}</td>)}
+                {labels.map((l, j) => {
+                  const m = metricOf(p, l)
+                  const cls = [numeric[j] ? 'num mono' : '', toneClass(m?.tone), kinds[j] && (m?.value === null || m?.value === undefined) ? 'ovp-wait' : ''].filter(Boolean).join(' ')
+                  return <td key={l} className={cls} title={m?.note || undefined}>{fmtCell(m, whole[j])}</td>
+                })}
               </tr>
               {isOpen && (
                 <tr className="ovp-details-row">
@@ -276,6 +294,7 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
             <RankedTable win={win} labels={preview.metric_labels} picks={preview.picks} inUniverse={data.in_universe}
               openTicker={openTicker} toggle={toggle} selTicker={selTicker} pick={pickFor(null)} topTitle={`One of OV's top picks as of ${asOf || 'this preview'}: not frozen`} linkDay={null} />
           )}
+          <ToneKey picks={preview.picks} />
           <Notes notes={previewNotes(data, preview)} />
           <Warnings a={data} />
           {preview.picks.length > 0 && (
@@ -305,6 +324,7 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
             <RankedTable win={win} labels={history.metric_labels} picks={history.picks} inUniverse={null}
               openTicker={openTicker} toggle={toggle} selTicker={selTicker} pick={pickFor(history.trading_date)} topTitle="One of OV's top picks that day" linkDay={history.trading_date} />
           )}
+          <ToneKey picks={history.picks} />
           <Notes notes={historyNotes(data, history)} />
           <Warnings a={data} />
           {history.picks.length > 0 && (
@@ -356,6 +376,7 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
             openTicker={openTicker} toggle={toggle} selTicker={selTicker} pick={pickFor(past ? day.trading_date : null)}
             topTitle={past ? 'One of OV\'s top picks that day' : 'One of OV\'s top picks today'} linkDay={past ? day.trading_date : null} />
         )}
+        <ToneKey picks={day.picks} />
         <Notes notes={dayNotes(data, day)} />
         <Warnings a={data} />
         {day.picks.length > 0 && (
