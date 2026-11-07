@@ -27,6 +27,15 @@ to `ws://<host>:7777/ws/alerts`.
 npm run build      # type-checks, then writes dashboard-v2/dist
 ```
 
+## Tests
+
+```bash
+npm test           # node --test on dashboard-v2/tests/*.test.ts, no extra packages; needs Node 22.18 or newer
+```
+
+The tests import plain `.ts` modules from `src/lib` (Node strips the types), so a module
+under test imports its own helpers with the `.ts` extension (`src/lib/sessionMarks.ts`).
+
 The scanner serves `dashboard-v2/dist` at **http://localhost:7777/v2/** and reads it from disk per
 request, so a rebuild shows up on reload without restarting the scanner.
 
