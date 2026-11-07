@@ -30,13 +30,14 @@ export function liveKind(picks: OvPick[], label: string): string | null {
   return null
 }
 
-/** A cell's text. An open against the pre-market range gets an arrow, so it reads at a glance. */
-export function fmtCell(m: OvEntry | undefined, whole: boolean): string {
+/** A cell's text. An open against the pre-market range gets an arrow, so it reads at a glance.
+ *  `small`: the column's numbers are all below 1 (view.ts fmtValue); a tile passes false. */
+export function fmtCell(m: OvEntry | undefined, whole: boolean, small = false): string {
   const v = m?.value
   if (m?.live?.kind === KIND_OPEN_VS_PM && typeof v === 'string') {
     return v === 'above' ? '▲ above' : v === 'below' ? '▼ below' : v
   }
-  return fmtValue(v, whole)
+  return fmtValue(v, whole, small)
 }
 
 /** Whether a row carries anything for the trade card; without it the plain list of fields shows. */

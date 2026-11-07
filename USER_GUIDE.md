@@ -310,7 +310,7 @@ rest of the list.
 - **The other columns** are the ones the module sends (`metric_labels` in
   `ov_picks/CONTRACT.md`), in its order and with its labels. The window adds no column of its
   own. Numbers are right-aligned: whole numbers with thousands separators, others to two
-  decimals (up to four below 1). A dash means no value.
+  decimals (up to four in a column whose numbers are all below 1). A dash means no value.
 - **Coloured cells** (the owner's layout "C1 + E1", 2026-11-07). The module can mark a value
   good (green), caution (amber) or a warning (red), and say in one line what it means. Hover a
   cell to read that line. A key under the table lists the colours in use. The module decides

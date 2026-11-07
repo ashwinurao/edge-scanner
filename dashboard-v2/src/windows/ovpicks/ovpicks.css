@@ -91,6 +91,7 @@
 .ovp-box { padding: 6px 8px 8px; border: 1px solid var(--border-soft); border-radius: 6px; background: var(--panel); min-width: 0; }
 .ovp-box h4, .ovp-group h5 { margin: 0 0 4px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
 .ovp-box .ovp-dl { grid-template-columns: 1fr; }
+.ovp-box .ovp-dl dt { max-width: 68%; }
 .ovp-box-note { margin: 2px 0 0; font-size: 10.5px; line-height: 1.35; }
 .ovp-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; min-width: 0; }
 .ovp-tile { display: flex; flex-direction: column; gap: 1px; padding: 5px 8px 6px; border: 1px solid var(--border-soft); border-left-width: 3px; border-radius: 5px; background: var(--panel); min-width: 0; }

@@ -135,8 +135,10 @@ row's own price terms:
 
 A live metric is a column the module places and Edge Scanner fills after the open, from the
 day's 09:30 ET minute bar and the row's `levels`. Edge Scanner fetches that bar once per day
-shown, on its own market-data keys (owner's go, 2026-11-07). Before 09:31 ET on the day, or
-without the bar or the levels it needs, the value stays null and the card says why.
+shown, on its own market-data keys (owner's go, 2026-11-07). It asks for the bar unadjusted,
+in that day's prices like the row's `levels`, so a later split does not change it. Before
+09:31 ET on the day, or without the bar or the levels it needs, the value stays null and the
+card says why.
 
 `live` has exactly these fields (`LIVE_FIELDS`):
 

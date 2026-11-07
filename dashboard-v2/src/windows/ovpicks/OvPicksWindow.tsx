@@ -25,7 +25,7 @@ import { KIND_RANGE_ATR, fmtCell, hasMeanings, liveKind, metricOf, toneClass } f
 import { FieldList, TradeCard } from './TradeCard'
 import { fetchOvPicks, fetchOvPicksDays, fillOvPicksWatchlist, syncOvPicksWatchlist, watchlistHas } from './api'
 import { OV_PICKS_DAYS_POLL_MS, OV_PICKS_PAST_POLL_MS, OV_PICKS_POLL_MS, OV_PICKS_WATCHLIST_ID } from './defaults'
-import { allWarnings, badges, dayLabel, dayNotes, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, topPicks, wholeColumn, whenET, type Note } from './view'
+import { allWarnings, badges, dayLabel, dayNotes, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, smallColumn, topPicks, wholeColumn, whenET, type Note } from './view'
 import './ovpicks.css'
 
 // After the card first sees the day's picks, the scanner's watcher can take a few seconds
@@ -96,6 +96,7 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
   const kinds = labels.map(l => liveKind(picks, l))
   const numeric = labels.map((l, i) => kinds[i] === KIND_RANGE_ATR || picks.some(p => typeof metricValue(p, l) === 'number'))
   const whole = labels.map(l => wholeColumn(picks, l))
+  const small = labels.map(l => smallColumn(picks, l))
   const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, ticker: string) => {
     if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
     e.preventDefault()
@@ -137,7 +138,7 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
                 {labels.map((l, j) => {
                   const m = metricOf(p, l)
                   const cls = [numeric[j] ? 'num mono' : '', toneClass(m?.tone), kinds[j] && (m?.value === null || m?.value === undefined) ? 'ovp-wait' : ''].filter(Boolean).join(' ')
-                  return <td key={l} className={cls} title={m?.note || undefined}>{fmtCell(m, whole[j])}</td>
+                  return <td key={l} className={cls} title={m?.note || undefined}>{fmtCell(m, whole[j], small[j])}</td>
                 })}
               </tr>
               {isOpen && (
