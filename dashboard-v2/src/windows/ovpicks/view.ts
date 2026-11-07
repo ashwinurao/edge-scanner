@@ -306,13 +306,21 @@ export function metricValue(p: OvPick, label: string): OvEntry['value'] | undefi
 
 /** A value as the card shows it. The labels and units are the module's; the card adds
  *  none and rounds only for reading. In a column of whole numbers (`whole`), thousands
- *  separators; otherwise 2 decimals (up to 4 below 1), so 86 and 85.75 line up. */
-export function fmtValue(v: OvEntry['value'] | undefined, whole = Number.isInteger(v)): string {
+ *  separators; otherwise 2 decimals, so 86 and 85.75 line up. Up to 4 decimals only for a
+ *  value below 1 in a column of such values (`small`), so 0.0012 still reads, while
+ *  0.27 lines up with 1.20 in a column that has both. */
+export function fmtValue(v: OvEntry['value'] | undefined, whole = Number.isInteger(v),
+  small = typeof v === 'number' && Math.abs(v) < 1): string {
   if (v === null || v === undefined || v === '') return DASH
   if (typeof v === 'string') return v
   if (!Number.isFinite(v)) return DASH
   if (whole && Number.isInteger(v)) return v.toLocaleString('en-US')
-  return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: Math.abs(v) < 1 ? 4 : 2 })
+  return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: small && Math.abs(v) < 1 ? 4 : 2 })
+}
+
+/** Whether every number in the column `label` is below 1, so its values keep up to 4 decimals. */
+export function smallColumn(picks: OvPick[], label: string): boolean {
+  return picks.every(p => { const v = metricValue(p, label); return typeof v !== 'number' || Math.abs(v) < 1 })
 }
 
 /** Whether every number in the column `label` is whole (true for a column with none). */

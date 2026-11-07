@@ -7,11 +7,59 @@ import type { WindowBase } from '../../types'
 /** Display-only: no settings, no order buttons. */
 export interface OvPicksConfig extends WindowBase { type: 'ovpicks' }
 
+/** How the window colours a value (ov_picks/CONTRACT.md, "What a value means"). The module
+ *  decides; another value from a newer module is shown without a colour. */
+export type OvTone = 'good' | 'caution' | 'bad'
+
+/** A band of a live column: the first band its value falls in gives the cell its tone and note. */
+export interface OvBand {
+  min?: number
+  max?: number
+  is?: string
+  tone?: OvTone | string
+  note?: string
+}
+
+/** A column the scanner fills after the open, from the day's 09:30 ET minute bar
+ *  (scanner/ov_picks_live.py): first_minute_range_atr or open_vs_pm_range. */
+export interface OvLive {
+  kind: string
+  bands: OvBand[]
+}
+
 /** One label and value. The module chooses the labels; the card shows them as written. */
 export interface OvEntry {
   label: string
   /** a finite number, text, or null when there is no value */
   value: number | string | null
+  /** metrics: the cell's colour, as the module (or, for a live column, its band) says */
+  tone?: OvTone | string | null
+  /** metrics: one line on what the value means; for a blank live cell, why it is blank */
+  note?: string | null
+  /** metrics: a column the scanner fills after the open */
+  live?: OvLive
+  /** details: the section of the details card */
+  group?: string
+}
+
+/** A row's price levels, in that day's prices (ov_picks/CONTRACT.md, "What a value means"). */
+export interface OvLevels {
+  atr?: number
+  prior_close?: number
+  prior_high?: number
+  prior_low?: number
+  pm_high?: number
+  pm_low?: number
+  /** the last pre-market price the module saw */
+  last?: number
+}
+
+/** The 09:30 ET minute bar, added by the scanner to rows with a live column. */
+export interface OvBar {
+  open: number
+  high: number
+  low: number
+  close: number
 }
 
 /** One row of the day's ranked list (ov_picks/CONTRACT.md, "Each row of picks"). */
@@ -28,6 +76,12 @@ export interface OvPick {
   metrics: OvEntry[]
   /** the full row, shown when the row is opened */
   details: OvEntry[]
+  /** the company's name, when the module sends it */
+  name?: string
+  /** the row's price levels, for the details card's ladder */
+  levels?: OvLevels
+  /** the 09:30 ET bar: null until it is known; absent on rows without a live column */
+  first_minute?: OvBar | null
 }
 
 export interface OvPicksDay {

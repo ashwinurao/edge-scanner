@@ -109,6 +109,11 @@ opt-in compose service.
 - **No OpenVector code or numbers here.** The module's code, the OpenVector code it vendors and
   OpenVector's parameters live only in the private repo. This repo is public: never copy any of
   them into it, or into an issue, a PR or a comment. Describe the module in words only.
+- **Meaning comes from the module.** A cell's tone and note, a live column's bands and the
+  details' groups are in the module's files (`ov_picks/CONTRACT.md`, "What a value means"). This
+  repo shows them and does only the plain arithmetic of a live column
+  (`scanner/ov_picks_live.py`). Research thresholds and notes stay in the private repo; the
+  samples here use made-up ones.
 - **Protected numbers and vendored code.** OV picks numbers (scoring, gates, universe and
   allocation) are protected like money logic: a change is its own PR in the module's repo, with a
   full 2026 replay of how the picks change and the owner's go. Until the hand-over, the vendored

@@ -8,6 +8,9 @@ type and allowed value. This module is its code:
 - write_picks, write_settled, write_parity: write one day record once, atomically;
 - write_preview: replace the day's preview, the ranked list as of one minute before 09:25 ET;
 - write_history: replace one of OV's past days, exported by the module (owner, 2026-11-07);
+- what each value means (owner, 2026-11-07, the window's layout "C1 + E1"): a row's metrics may
+  carry a tone and a note, its details a group, and the row its price levels; a live metric is
+  a column Edge Scanner fills after the open from the day's 09:30 ET minute bar;
 - record_job_state: replace one job's entry in the status file;
 - read_day, read_preview, read_history, read_status: readers that never raise on a missing
   or bad file, and history_days, the past days exported;
@@ -64,6 +67,31 @@ MAX_METRICS = 20
 MAX_DETAILS = 200
 # The longest label or text value; the module shortens longer text before it writes.
 MAX_TEXT_LEN = 200
+
+# What a value means (owner, project thread, 2026-11-07, layout "C1 + E1"). The module
+# decides; Edge Scanner shows it and never reads meaning into a label or a value.
+# A metric's tone: how the window colours the cell.
+TONE_GOOD = "good"
+TONE_CAUTION = "caution"
+TONE_BAD = "bad"
+TONES = (TONE_GOOD, TONE_CAUTION, TONE_BAD)
+# A live metric: a column Edge Scanner fills after the open from the day's 09:30 ET minute
+# bar and the row's levels. The file holds null for its value; its bands say what each
+# value means. Edge Scanner fetches that bar once per day shown (owner's go, 2026-11-07).
+LIVE_FIRST_MINUTE_RANGE_ATR = "first_minute_range_atr"   # (bar high - bar low) / levels.atr
+LIVE_OPEN_VS_PM_RANGE = "open_vs_pm_range"               # the bar's open against levels.pm_high and pm_low
+LIVE_KINDS = (LIVE_FIRST_MINUTE_RANGE_ATR, LIVE_OPEN_VS_PM_RANGE)
+OPEN_ABOVE = "above"      # opened above levels.pm_high
+OPEN_BELOW = "below"      # opened below levels.pm_low
+OPEN_INSIDE = "inside"    # opened inside the pre-market range, its edges included
+OPEN_VS_PM_VALUES = (OPEN_ABOVE, OPEN_BELOW, OPEN_INSIDE)
+MAX_BANDS = 8
+# A row's price levels, in the row's own price terms: its ATR and the prior day's and the
+# pre-market's levels. The details card draws them; the live metrics use atr, pm_high, pm_low.
+LEVEL_ATR = "atr"
+LEVEL_PM_HIGH = "pm_high"
+LEVEL_PM_LOW = "pm_low"
+LEVEL_FIELDS = (LEVEL_ATR, "prior_close", "prior_high", "prior_low", LEVEL_PM_HIGH, LEVEL_PM_LOW, "last")
 # A sanity bound only; the runner upper-cases and strips tickers the way OV's live code does.
 MAX_TICKER_LEN = 16
 # 100 rows with full details are about 1.5 MB. The writers refuse a record bigger than this,
@@ -184,12 +212,34 @@ F_TOP = "top"
 F_EARNINGS_LABEL = "earnings_label"
 F_METRICS = "metrics"
 F_DETAILS = "details"
-PICK_FIELDS = (F_RANK, F_TICKER, F_SCORE, F_STATUS, F_TOP, F_EARNINGS_LABEL, F_METRICS, F_DETAILS)
+F_NAME = "name"                # optional: the company's name
+F_LEVELS = "levels"            # optional: the row's price levels (LEVEL_FIELDS)
+PICK_REQUIRED = (F_RANK, F_TICKER, F_SCORE, F_STATUS, F_TOP, F_EARNINGS_LABEL, F_METRICS, F_DETAILS)
+PICK_OPTIONAL = (F_NAME, F_LEVELS)
+PICK_FIELDS = PICK_REQUIRED + PICK_OPTIONAL
 
 # One entry of a row's metrics or details.
 F_LABEL = "label"
 F_VALUE = "value"
 ENTRY_FIELDS = (F_LABEL, F_VALUE)
+F_TONE = "tone"                # optional, metrics: one of TONES
+F_NOTE = "note"                # optional, metrics: one line on what the value means
+F_LIVE = "live"                # optional, metrics: a column Edge Scanner fills after the open
+F_GROUP = "group"              # optional, details: the section the details card puts it in
+METRIC_OPTIONAL = (F_TONE, F_NOTE, F_LIVE)
+DETAIL_OPTIONAL = (F_GROUP,)
+METRIC_FIELDS = ENTRY_FIELDS + METRIC_OPTIONAL
+DETAIL_FIELDS = ENTRY_FIELDS + DETAIL_OPTIONAL
+# A live metric's object, and one of its bands: the first band the value falls in gives the
+# cell its tone and note. A number is in a band when it is at least min and at most max (a
+# null bound is open); a text value when it equals "is". A band with no bound takes any value.
+F_LIVE_KIND = "kind"
+F_BANDS = "bands"
+LIVE_FIELDS = (F_LIVE_KIND, F_BANDS)
+F_MIN = "min"
+F_MAX = "max"
+F_IS = "is"
+BAND_FIELDS = (F_MIN, F_MAX, F_IS, F_TONE, F_NOTE)
 
 F_CHECKED_AT = "checked_at"
 F_STATE = "state"
@@ -403,8 +453,95 @@ def _is_value(v: Any) -> bool:
     return v is None or _is_number(v) or (isinstance(v, str) and len(v) <= MAX_TEXT_LEN)
 
 
-def _entries_problems(where: str, entries: Any, limit: int, *, strict: bool) -> list[str]:
-    """A row's metrics or details: a list of at most `limit` {label, value} objects."""
+def _is_note(v: Any) -> bool:
+    return isinstance(v, str) and len(v) <= MAX_TEXT_LEN
+
+
+def _tone_problems(at: str, v: Any, known_values: bool) -> list[str]:
+    if v is None or _is_state(v, TONES, known_values):
+        return []
+    return [f"{at} must be one of {_one_of(TONES + (None,))}, not {v!r}"]
+
+
+def _band_problems(at: str, band: Any, kind: Any, *, strict: bool, known_values: bool) -> list[str]:
+    if not isinstance(band, Mapping):
+        return [f"{at} is not a JSON object"]
+    problems = _unknown_keys(band, BAND_FIELDS, f"{at}.") if strict else []
+    for key in (F_MIN, F_MAX):
+        if band.get(key) is not None and not _is_number(band[key]):
+            problems.append(f"{at}.{key} must be a finite number or null, not {band[key]!r}")
+    if band.get(F_IS) is not None and not _is_label(band[F_IS]):
+        problems.append(f"{at}.is must be text of 1 to {MAX_TEXT_LEN} characters or null, not {band[F_IS]!r}")
+    problems += _tone_problems(f"{at}.tone", band.get(F_TONE), known_values)
+    if band.get(F_NOTE) is not None and not _is_note(band[F_NOTE]):
+        problems.append(f"{at}.note must be text of at most {MAX_TEXT_LEN} characters or null, not {band[F_NOTE]!r}")
+    if problems:
+        return problems
+    low, high, text = band.get(F_MIN), band.get(F_MAX), band.get(F_IS)
+    if low is not None and high is not None and low > high:
+        problems.append(f"{at}: min {low} is above max {high}")
+    if known_values and kind == LIVE_FIRST_MINUTE_RANGE_ATR and text is not None:
+        problems.append(f"{at}.is must be null: {kind} is a number")
+    if known_values and kind == LIVE_OPEN_VS_PM_RANGE:
+        if low is not None or high is not None:
+            problems.append(f"{at}: min and max must be null: {kind} is one of {_one_of(OPEN_VS_PM_VALUES)}")
+        if text is not None and text not in OPEN_VS_PM_VALUES:
+            problems.append(f"{at}.is must be one of {_one_of(OPEN_VS_PM_VALUES + (None,))}, not {text!r}")
+    return problems
+
+
+def _live_problems(at: str, live: Any, *, strict: bool, known_values: bool) -> list[str]:
+    """A live metric's object: its kind and the bands that say what each value means."""
+    if not isinstance(live, Mapping):
+        return [f"{at} must be a JSON object with kind and bands, not {live!r}"]
+    problems = _unknown_keys(live, LIVE_FIELDS, f"{at}.") if strict else []
+    kind = live.get(F_LIVE_KIND)
+    if not _is_state(kind, LIVE_KINDS, known_values):
+        problems.append(f"{at}.kind must be one of {_one_of(LIVE_KINDS)}, not {kind!r}")
+    bands = live.get(F_BANDS)
+    if not isinstance(bands, list) or len(bands) > MAX_BANDS:
+        return problems + [f"{at}.bands must be a list of at most {MAX_BANDS} bands, not {bands!r}"]
+    for k, band in enumerate(bands):
+        problems += _band_problems(f"{at}.bands[{k}]", band, kind, strict=strict, known_values=known_values)
+    return problems
+
+
+def _optional_entry_problems(at: str, entry: Mapping, optional: tuple[str, ...], *,
+                             strict: bool, known_values: bool) -> list[str]:
+    """A metric's tone, note and live object, or a detail's group: each may be left out."""
+    problems = []
+    if F_TONE in optional:
+        problems += _tone_problems(f"{at}.tone", entry.get(F_TONE), known_values)
+    if F_NOTE in optional and entry.get(F_NOTE) is not None and not _is_note(entry[F_NOTE]):
+        problems.append(f"{at}.note must be text of at most {MAX_TEXT_LEN} characters or null, "
+                        f"not {entry[F_NOTE]!r}")
+    if F_LIVE in optional and entry.get(F_LIVE) is not None:
+        problems += _live_problems(f"{at}.live", entry[F_LIVE], strict=strict, known_values=known_values)
+        # Edge Scanner fills the value after the open; the module never writes one.
+        if strict and entry.get(F_VALUE) is not None:
+            problems.append(f"{at}.value must be null: a live metric is filled by Edge Scanner after the open")
+    if F_GROUP in optional and entry.get(F_GROUP) is not None and not _is_label(entry[F_GROUP]):
+        problems.append(f"{at}.group must be text of 1 to {MAX_TEXT_LEN} characters or null, "
+                        f"not {entry[F_GROUP]!r}")
+    return problems
+
+
+def _levels_problems(at: str, levels: Any, *, strict: bool) -> list[str]:
+    if levels is None:
+        return []
+    if not isinstance(levels, Mapping):
+        return [f"{at} must be a JSON object of price levels or null, not {levels!r}"]
+    problems = _unknown_keys(levels, LEVEL_FIELDS, f"{at}.") if strict else []
+    for key in LEVEL_FIELDS:
+        if levels.get(key) is not None and not _is_number(levels[key]):
+            problems.append(f"{at}.{key} must be a finite number or null, not {levels[key]!r}")
+    return problems
+
+
+def _entries_problems(where: str, entries: Any, limit: int, *, strict: bool,
+                      optional: tuple[str, ...] = (), known_values: bool = True) -> list[str]:
+    """A row's metrics or details: a list of at most `limit` {label, value} objects, each
+    with the `optional` fields it may carry."""
     if not isinstance(entries, list):
         return [f"{where} must be a list of {{label, value}} objects, not {entries!r}"]
     problems = []
@@ -416,7 +553,8 @@ def _entries_problems(where: str, entries: Any, limit: int, *, strict: bool) -> 
             problems.append(f"{at} is not a JSON object")
             continue
         if strict:
-            problems += _unknown_keys(entry, ENTRY_FIELDS, f"{at}.")
+            problems += _unknown_keys(entry, ENTRY_FIELDS + optional, f"{at}.")
+        problems += _optional_entry_problems(at, entry, optional, strict=strict, known_values=known_values)
         if F_LABEL not in entry:
             problems.append(f"{at}.label is missing")
         elif not _is_label(entry[F_LABEL]):
@@ -449,11 +587,15 @@ def _pick_problems(i: int, pick: Any, *, strict: bool, known_values: bool) -> li
             problems.append(f"{where}.{key} is missing")
         elif not ok(pick[key]):
             problems.append(f"{where}.{key} must be {what}, not {pick[key]!r}")
-    for key, limit in ((F_METRICS, MAX_METRICS), (F_DETAILS, MAX_DETAILS)):
+    for key, limit, optional in ((F_METRICS, MAX_METRICS, METRIC_OPTIONAL), (F_DETAILS, MAX_DETAILS, DETAIL_OPTIONAL)):
         if key not in pick:
             problems.append(f"{where}.{key} is missing")
         else:
-            problems += _entries_problems(f"{where}.{key}", pick[key], limit, strict=strict)
+            problems += _entries_problems(f"{where}.{key}", pick[key], limit, strict=strict,
+                                          optional=optional, known_values=known_values)
+    if pick.get(F_NAME) is not None and not _is_label(pick[F_NAME]):
+        problems.append(f"{where}.name must be text of 1 to {MAX_TEXT_LEN} characters or null, not {pick[F_NAME]!r}")
+    problems += _levels_problems(f"{where}.levels", pick.get(F_LEVELS), strict=strict)
     return problems
 
 
@@ -880,11 +1022,33 @@ def write_picks(out_dir: str | os.PathLike, record: Mapping) -> Path:
 
 
 def _row(pick: Mapping) -> dict:
-    """One row with this version's fields only, in their order."""
-    row = {key: pick[key] for key in PICK_FIELDS}
-    for key in (F_METRICS, F_DETAILS):
-        row[key] = [{F_LABEL: e[F_LABEL], F_VALUE: e[F_VALUE]} for e in pick[key]]
+    """One row with this version's fields only, in their order. An optional field is kept
+    only when it has a value, so a row written without one reads back unchanged."""
+    row = {}
+    for key in PICK_FIELDS:
+        if key in PICK_REQUIRED:
+            row[key] = pick[key]
+        elif key == F_LEVELS and pick.get(key) is not None:
+            row[key] = {k: pick[key][k] for k in LEVEL_FIELDS if pick[key].get(k) is not None}
+        elif pick.get(key) is not None:
+            row[key] = pick[key]
+    row[F_METRICS] = [_entry(e, METRIC_OPTIONAL) for e in pick[F_METRICS]]
+    row[F_DETAILS] = [_entry(e, DETAIL_OPTIONAL) for e in pick[F_DETAILS]]
     return row
+
+
+def _entry(entry: Mapping, optional: tuple[str, ...]) -> dict:
+    out = {F_LABEL: entry[F_LABEL], F_VALUE: entry[F_VALUE]}
+    for key in optional:
+        value = entry.get(key)
+        if value is None:
+            continue
+        if key == F_LIVE:
+            value = {F_LIVE_KIND: value.get(F_LIVE_KIND),
+                     F_BANDS: [{k: b[k] for k in BAND_FIELDS if b.get(k) is not None}
+                               for b in value.get(F_BANDS, [])]}
+        out[key] = value
+    return out
 
 
 def _write_follow_up(out_dir, record, *, what, problems, kind, fields, name) -> Path:
