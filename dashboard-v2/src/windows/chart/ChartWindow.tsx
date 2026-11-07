@@ -134,8 +134,8 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     })
     const volume = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol', lastValueVisible: false, priceLineVisible: false })
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } })
-    // fork: shaded extended hours and dashed day lines behind the candles (Ash, 2026-11-07).
-    const sessions = new SessionPrimitive({ ext: pal.ext, dayLine: pal.dayLine })
+    // fork: darker regular hours and dashed day lines behind the candles (Ash, 2026-11-07).
+    const sessions = new SessionPrimitive({ rth: pal.rth, dayLine: pal.dayLine })
     candles.attachPrimitive(sessions)
     refs.current = { chart, candles, volume, lines: {}, priceLines: [], sessions }
 
@@ -149,7 +149,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       const p = readChartPalette()
       chart.applyOptions({ layout: { background: { type: ColorType.Solid, color: p.bg }, textColor: p.text }, grid: { vertLines: { color: p.grid }, horzLines: { color: p.grid } }, rightPriceScale: { borderColor: p.border }, timeScale: { borderColor: p.border } })
       candles.applyOptions({ upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down })
-      sessions.setColors({ ext: p.ext, dayLine: p.dayLine })
+      sessions.setColors({ rth: p.rth, dayLine: p.dayLine })
       const L = refs.current?.lines
       L?.vwap?.applyOptions({ color: p.vwap }); L?.pmVwap?.applyOptions({ color: p.vwap }); L?.ema9?.applyOptions({ color: p.ema9 }); L?.ema21?.applyOptions({ color: p.ema21 })
       L?.sma50?.applyOptions({ color: p.sma50 }); L?.sma100?.applyOptions({ color: p.sma100 }); L?.sma200?.applyOptions({ color: p.sma200 })
@@ -174,7 +174,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     r.chart.timeScale().applyOptions({ timeVisible: tf !== '1D' && tf !== '1W' })
     r.candles.setData(visibleBars.map(b => ({ time: ts(b.t), open: b.o, high: b.h, low: b.l, close: b.c })))
     // Daily and weekly bars have no sessions to shade or split.
-    r.sessions.setMarks(session ? sessionMarks(visibleBars.map(b => b.t)) : { extRuns: [], dayStarts: [] })
+    r.sessions.setMarks(session ? sessionMarks(visibleBars.map(b => b.t)) : { rthRuns: [], dayStarts: [] })
     r.volume.setData(o.volume ? visibleBars.map(b => ({ time: ts(b.t), value: b.v, color: b.c >= b.o ? pal.upSoft : pal.downSoft })) : [])
     r.volume.applyOptions({ visible: o.volume })
 
