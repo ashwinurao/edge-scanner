@@ -1,16 +1,27 @@
 // fork: OV picks card (ashwinurao/edge-scanner#20). Reads only existing scanner routes:
-// GET /api/v2/ov-picks and GET /api/v2/watchlists. Never writes.
+// GET /api/v2/ov-picks (?date for a past day), GET /api/v2/ov-picks/days and
+// GET /api/v2/watchlists. Never writes.
 import type { Watchlist } from '../../types'
 import { api } from '../../lib/api'
 import { useWatchlists } from '../../stores/watchlistsStore'
-import type { OvPicksAnswer } from './types'
+import type { OvPicksAnswer, OvPicksDays } from './types'
 import { OV_PICKS_WATCHLIST_ID } from './defaults'
 
-export async function fetchOvPicks(): Promise<OvPicksAnswer> {
-  const res = await fetch('/api/v2/ov-picks')
+/** Today's answer, or a past day's (`day`, YYYY-MM-DD; Ash, 2026-11-07). */
+export async function fetchOvPicks(day: string | null = null): Promise<OvPicksAnswer> {
+  const res = await fetch(day ? `/api/v2/ov-picks?date=${encodeURIComponent(day)}` : '/api/v2/ov-picks')
   if (res.status === 404) throw new Error('This scanner has no /api/v2/ov-picks route. Update the scanner and restart it.')
   if (!res.ok) throw new Error(`The scanner answered HTTP ${res.status} for /api/v2/ov-picks. Check the scanner log.`)
   return res.json() as Promise<OvPicksAnswer>
+}
+
+/** The days the calendar can show. An older scanner without the route has none: the card
+ *  then offers today only, and says why. */
+export async function fetchOvPicksDays(): Promise<OvPicksDays> {
+  const res = await fetch('/api/v2/ov-picks/days')
+  if (res.status === 404) throw new Error('This scanner has no past days for OV picks. Update the scanner and restart it.')
+  if (!res.ok) throw new Error(`The scanner answered HTTP ${res.status} for /api/v2/ov-picks/days. Check the scanner log.`)
+  return res.json() as Promise<OvPicksDays>
 }
 
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((s, i) => s === b[i])

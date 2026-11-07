@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_DIR = ROOT / "ov_picks"
 
 # sha256 over each shared file's path and LF content, in path order (see _contract_digest).
-CONTRACT_SHA256 = "1027d5834335c243672e49fe16cbdcddaef70dbc3d94032a6eb8ca41e8ce4274"
+CONTRACT_SHA256 = "ca6637cea4595ebcbfc77cbe23a9bb76d9be5a70038b38bc3b404fbaef61a026"
 
 
 def _shared_files():

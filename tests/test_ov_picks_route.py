@@ -50,17 +50,25 @@ def _et(text):
     return datetime.fromisoformat(text).replace(tzinfo=ET)
 
 
-def _get(monkeypatch, out_dir, now):
-    """The route's answer for OV_PICKS_DIR=out_dir (None leaves it unset) at ET time `now`."""
+def _get(monkeypatch, out_dir, now, url=URL, fields=route.ROUTE_FIELDS, **params):
+    """The route's answer for OV_PICKS_DIR=out_dir (None leaves it unset) at ET time `now`.
+
+    `params` are the query, e.g. date="2026-11-04" for a past day.
+    """
     if out_dir is not None:
         monkeypatch.setenv(route.ENV_VAR, str(out_dir))
     app = FastAPI()
     route.register(app, SimpleNamespace(), clock=lambda: _et(now))
-    resp = TestClient(app).get(URL)
+    resp = TestClient(app).get(url, params=params)
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert set(body) == set(route.ROUTE_FIELDS)
+    assert set(body) == set(fields)
     return body
+
+
+def _days(monkeypatch, out_dir, now):
+    """GET /api/v2/ov-picks/days for OV_PICKS_DIR=out_dir at ET time `now`."""
+    return _get(monkeypatch, out_dir, now, url=route.DAYS_ROUTE, fields=route.DAYS_FIELDS)
 
 
 def _record(day, frozen_at, **over):
@@ -203,6 +211,9 @@ ROUTE_CASES = {
     # 09:14:30 ET, data ready, the preview as of 09:14 and no picks file yet.
     "preview": ("2026-11-05 09:14:30", False, None, None, None, None, [], 0, None, None,
                 "2026-11-05T14:25:00Z"),
+    # The shadow sample's day, with OV's past days in history/: today's answer is the same.
+    "past_days": ("2026-11-05 09:30", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
+                  TOP, 6, c.SETTLED_SAME, c.PENDING, NEXT_SCAN),
 }
 # The warmup state of each sample day without picks.
 NO_PICKS_WARMUP = {"warming": c.WARMING, "preview": c.DATA_READY}
@@ -565,3 +576,168 @@ def test_preview_rows_outside_the_scanner_universe_are_marked(monkeypatch):
 def test_no_universe_answer_when_not_set_up(monkeypatch):
     body = _get(monkeypatch, None, "2026-11-05 09:30")
     assert body["reason_code"] == route.NOT_SET_UP and body["in_universe"] is None
+
+
+# ---------------------------------------------------------------- past days (Ash, 2026-11-07)
+# The window's calendar: GET /api/v2/ov-picks?date=YYYY-MM-DD serves a past day, the
+# module's own frozen picks or, before the module ran, OV's own list from history/.
+
+PAST = SAMPLES / "past_days"
+
+
+def _two_module_days(out_dir):
+    # Wednesday 2026-11-04 and Thursday 2026-11-05 frozen; the next scan Friday 09:25 ET.
+    c.write_picks(out_dir, _record("2026-11-04", "2026-11-04T14:25:00Z"))
+    c.write_picks(out_dir, _record("2026-11-05", "2026-11-05T14:25:00Z",
+                                   picks=_record("x", "y")["picks"][:2]))
+    _scan(out_dir, c.PICKS_FROZEN, at="2026-11-05T14:25:00Z", day="2026-11-05",
+          next_at="2026-11-06T14:25:00Z")
+
+
+def test_a_past_day_with_the_modules_picks_is_served_when_asked(monkeypatch, tmp_path):
+    _two_module_days(tmp_path)
+
+    # 09:30 ET: Friday's 09:25 scan is due and not yet late, so it is still the next scan.
+    body = _get(monkeypatch, tmp_path, "2026-11-06 09:30", date="2026-11-04")
+
+    assert (body["reason_code"], body["asked_date"]) == ("", "2026-11-04")
+    assert (body["today_et"], body["trading_date"], body["is_today"]) == ("2026-11-06", "2026-11-04", False)
+    assert body["day"] == c.read_day(tmp_path, "2026-11-04")       # the reader's view, unchanged
+    assert len(body["day"]["picks"]) == 4
+    # The module's own picks win, and today's preview and universe are not about that day.
+    assert (body["history"], body["preview"], body["in_universe"]) == (None, None, None)
+    # The market note and the next scan are still about today.
+    assert body["market_closed"] is False and body["next_scan_at"] == "2026-11-06T14:25:00Z"
+
+
+def test_a_past_day_before_the_module_ran_serves_ovs_history(monkeypatch):
+    for day, source in (("2026-11-03", c.HISTORY_OV_REBUILD), ("2026-11-04", c.HISTORY_OV_LIVE)):
+        body = _get(monkeypatch, PAST, "2026-11-05 10:40", date=day)
+        assert (body["reason_code"], body["trading_date"], body["is_today"]) == ("", day, False)
+        assert body["day"]["has_picks"] is False and body["day"]["reason_code"] == c.MISSING
+        assert body["history"] == c.read_history(PAST, day)      # the reader's view, unchanged
+        assert body["history"]["has_history"] is True and body["history"]["source"] == source
+        assert [p["ticker"] for p in body["history"]["picks"] if p["top"]] == TOP
+
+
+def test_a_past_day_with_neither_says_so(monkeypatch):
+    body = _get(monkeypatch, PAST, "2026-11-05 10:40", date="2026-11-02")
+    assert (body["reason_code"], body["trading_date"]) == ("", "2026-11-02")
+    assert body["day"]["reason_code"] == c.MISSING
+    assert body["history"]["has_history"] is False and body["history"]["reason_code"] == c.MISSING
+
+
+def test_asking_for_today_is_todays_answer(monkeypatch):
+    plain = _get(monkeypatch, SAMPLES / "preview", "2026-11-05 09:14:30")
+    asked = _get(monkeypatch, SAMPLES / "preview", "2026-11-05 09:14:30", date=DAY)
+    assert asked["asked_date"] == DAY and plain["asked_date"] is None
+    assert {**asked, "asked_date": None} == plain
+    assert asked["preview"]["has_preview"] is True and asked["history"] is None
+
+
+def test_a_past_day_never_shows_todays_preview(monkeypatch):
+    # Thursday 09:14 ET is inside the preview window; Wednesday's answer has no preview.
+    body = _get(monkeypatch, PAST, "2026-11-05 09:14:30", date="2026-11-04")
+    assert body["preview"] is None and body["history"]["has_history"] is True
+
+
+def test_on_a_weekend_an_asked_day_is_served_not_the_latest(monkeypatch, tmp_path):
+    _two_module_days(tmp_path)
+    body = _get(monkeypatch, tmp_path, "2026-11-07 11:00", date="2026-11-04")
+    assert (body["market_closed"], body["trading_date"]) == (True, "2026-11-04")
+    assert _get(monkeypatch, tmp_path, "2026-11-07 11:00")["trading_date"] == "2026-11-05"
+
+
+def test_a_past_day_gets_no_universe_marks(monkeypatch, tmp_path):
+    _two_module_days(tmp_path)
+    monkeypatch.setenv(route.ENV_VAR, str(tmp_path))
+    app = FastAPI()
+    route.register(app, SimpleNamespace(scanner=SimpleNamespace(_states={"AAAA": object()})),
+                   clock=lambda: _et("2026-11-05 10:00"))
+    client = TestClient(app)
+    assert client.get(URL, params={"date": "2026-11-04"}).json()["in_universe"] is None
+    # Today's answer (Thursday's frozen picks) still marks them.
+    today = client.get(URL).json()
+    assert today["trading_date"] == "2026-11-05" and today["in_universe"] is not None
+    assert set(today["in_universe"]) == {p["ticker"] for p in today["day"]["picks"]}
+
+
+@pytest.mark.parametrize("bad, words", [
+    ("2026-13-01", "not a day"), ("11/04/2026", "not a day"), ("2026-11-4", "not a day"),
+    ("yesterday", "not a day"), ("2026-11-06", "after today"), ("2027-01-04", "after today"),
+])
+def test_a_bad_or_future_date_is_refused_with_the_reason(monkeypatch, bad, words):
+    body = _get(monkeypatch, PAST, "2026-11-05 10:40", date=bad)
+    assert (body["set_up"], body["reason_code"], body["asked_date"]) == (True, route.BAD_DATE, bad)
+    assert words in body["reason"]
+    assert (body["day"], body["history"], body["status"]) == (None, None, None)
+
+
+def test_a_bad_date_does_not_hide_a_missing_setup(monkeypatch):
+    body = _get(monkeypatch, None, "2026-11-05 10:40", date="nope")
+    assert body["reason_code"] == route.NOT_SET_UP
+
+
+def test_a_reader_without_history_files_still_serves_past_days(monkeypatch):
+    old = SimpleNamespace(**{k: getattr(c, k) for k in dir(c) if not k.startswith("__")})
+    del old.read_history, old.history_days
+    monkeypatch.setattr(route, "_load_contract", lambda: old)
+    body = _get(monkeypatch, PAST, "2026-11-05 10:40", date="2026-11-04")
+    assert body["reason_code"] == "" and body["history"] is None and body["day"]["has_picks"] is False
+    assert _days(monkeypatch, PAST, "2026-11-05 10:40")["days"] == [DAY]
+
+
+# ---------------------------------------------------------------- the days list
+
+def test_the_days_list_has_module_days_and_history_days_oldest_first(monkeypatch, tmp_path):
+    folder = tmp_path / "out"
+    shutil.copytree(PAST, folder)
+    c.write_picks(folder, _record("2026-11-02", "2026-11-02T14:25:00Z"))
+    (folder / "2026-11-01").mkdir()                     # a day folder without picks is not listed
+    c.write_preview(folder, {"trading_date": "2026-10-30", "as_of": "2026-10-30T13:10:00Z",
+                             "previewed_at": "2026-10-30T13:10:20Z", "shadow": True,
+                             "earnings_status": c.EARNINGS_AVAILABLE, "metric_labels": ["Score"],
+                             "picks": []})            # nor one with only a preview
+    (folder / "notes").mkdir()
+
+    body = _days(monkeypatch, folder, "2026-11-05 10:40")
+
+    assert (body["set_up"], body["reason_code"], body["today_et"]) == (True, "", DAY)
+    assert body["days"] == ["2026-11-02", "2026-11-03", "2026-11-04", DAY]
+
+
+def test_the_days_list_leaves_out_days_after_today(monkeypatch, tmp_path):
+    _two_module_days(tmp_path)
+    assert _days(monkeypatch, tmp_path, "2026-11-04 10:00")["days"] == ["2026-11-04"]
+
+
+def test_the_days_list_says_why_when_there_is_no_folder(monkeypatch, tmp_path):
+    body = _days(monkeypatch, None, "2026-11-05 10:40")
+    assert (body["reason_code"], body["days"]) == (route.NOT_SET_UP, [])
+    body = _days(monkeypatch, tmp_path / "gone", "2026-11-05 10:40")
+    assert (body["reason_code"], body["days"]) == (route.NO_FOLDER, [])
+    body = _days(monkeypatch, tmp_path, "2026-11-05 10:40")
+    assert (body["reason_code"], body["days"]) == ("", [])
+
+
+def test_a_days_list_failure_is_a_clear_state_not_a_500(monkeypatch, tmp_path):
+    def _boom(*_a, **_k):
+        raise OSError("disk gone")
+    monkeypatch.setattr(route, "_day_folders", _boom)
+    body = _days(monkeypatch, tmp_path, "2026-11-05 10:40")
+    assert body["reason_code"] == route.ERROR and "disk gone" in body["reason"] and body["days"] == []
+
+
+def test_create_app_serves_the_days_list():
+    resp = TestClient(_real_app()).get(route.DAYS_ROUTE)
+    assert resp.status_code == 200 and resp.json()["reason_code"] == route.NOT_SET_UP
+
+
+def test_past_day_reads_never_write_into_the_output_folder(monkeypatch, tmp_path):
+    folder = tmp_path / "out"
+    shutil.copytree(PAST, folder)
+    before = _snapshot(folder)
+    for day in ("2026-11-02", "2026-11-03", "2026-11-04", DAY, "2026-11-09", "bad"):
+        _get(monkeypatch, folder, "2026-11-05 10:40", date=day)
+    _days(monkeypatch, folder, "2026-11-05 10:40")
+    assert _snapshot(folder) == before

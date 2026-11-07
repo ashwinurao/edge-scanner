@@ -33,8 +33,9 @@ function post<T>(url: string, body: unknown): Promise<T> {
 
 export const api = {
   // existing scanner endpoints (:7777)
-  bars: (symbol: string, tf: string) =>
-    json<{ bars: Bar[]; error?: string }>(`/api/bars/${encodeURIComponent(symbol)}/${tf}`).then(d => d.bars ?? []),
+  // fork: `day` (YYYY-MM-DD) ends the bars on that past day (scanner/past_day.py).
+  bars: (symbol: string, tf: string, day: string | null = null) =>
+    json<{ bars: Bar[]; error?: string }>(`/api/bars/${encodeURIComponent(symbol)}/${tf}${day ? `?date=${day}` : ''}`).then(d => d.bars ?? []),
   premarket: () => json<PremarketPayload>('/api/premarket'),
   regime: () => json<{ regime: string }>('/api/regime'),
   // /api/v2
@@ -49,9 +50,11 @@ export const api = {
   setupCheck: (symbol: string, minutes: number) =>
     json<SetupCheckPayload>(`/api/v2/check/${encodeURIComponent(symbol)}?minutes=${minutes}`),
   fundamentals: (symbol: string) => json<Fundamentals>(`/api/v2/fundamentals/${encodeURIComponent(symbol)}`),
-  news: (symbols: string[] | null, limit: number, hours: number) => {
+  // fork: `day` (YYYY-MM-DD) ends the window at that past day's 16:00 ET close.
+  news: (symbols: string[] | null, limit: number, hours: number, day: string | null = null) => {
     const q = new URLSearchParams({ limit: String(limit), hours: String(hours) })
     if (symbols?.length) q.set('symbols', symbols.join(','))
+    if (day) q.set('date', day)
     return json<NewsPayload>(`/api/v2/news?${q}`)
   },
   universeMeta: () => json<UniverseMetaPayload>('/api/v2/universe/meta'),

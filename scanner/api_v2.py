@@ -27,7 +27,7 @@ import pandas as pd
 from fastapi import Body, FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 
-from scanner import plugins
+from scanner import past_day, plugins  # fork: past_day for /api/v2/news ?date
 from scanner.custom_setups import CustomEvaluator, CustomSetupStore, SetupError, SetupNames, summary_lines
 from scanner.events import EventBuffer
 from scanner.recent_activity import build_setup_check
@@ -499,9 +499,16 @@ def register_v2_routes(app: FastAPI, app_state, **state_kw) -> V2State:
         symbols: str = Query(""),
         limit: int = Query(50, ge=1, le=50),
         hours: int = Query(24, ge=1, le=720),
+        on: str = Query("", alias="date"),
     ) -> JSONResponse:
         syms = [s.strip().upper() for s in symbols.split(",") if s.strip()] or None
-        result = await asyncio.to_thread(v2.news.fetch, syms, limit, hours)
+        # fork: ?date=YYYY-MM-DD ends the window at that day's 16:00 ET close (scanner/past_day.py).
+        try:
+            day = past_day.parse_day(on, past_day.today_et())
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        until = past_day.close_of(day) if day else None
+        result = await asyncio.to_thread(v2.news.fetch, syms, limit, hours, until)
         return JSONResponse(clean(result))
 
     @app.get("/api/v2/universe/meta")

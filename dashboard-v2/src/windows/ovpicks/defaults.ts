@@ -10,3 +10,7 @@ export const OV_PICKS_SIZE: WindowSize = { w: 860, h: 460, minW: 380, minH: 200 
 export const OV_PICKS_WATCHLIST_ID = 'ov-picks'
 /** The card polls the route; the picks file changes once a day. */
 export const OV_PICKS_POLL_MS = 15_000
+/** A past day's list does not change: the card reads it again only now and then. */
+export const OV_PICKS_PAST_POLL_MS = 300_000
+/** The calendar's list of days grows by one a day. */
+export const OV_PICKS_DAYS_POLL_MS = 300_000

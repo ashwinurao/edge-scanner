@@ -3,15 +3,23 @@ import type { NewsConfig, NewsItem } from '../../types'
 import { api } from '../../lib/api'
 import { usePoll } from '../../lib/usePoll'
 import { fmtAge } from '../../lib/time'
-import { useLinkedSymbol, linkSymbol } from '../../stores/linkStore'
+import { useLinkedDay, useLinkedSymbol, linkSymbol } from '../../stores/linkStore'
 import { Empty, Field, Select, SymbolInput, Toggle } from '../../components/primitives'
 import { ArticleModal } from '../../components/ArticleModal'
+
+/** fork: a past day's news covers at least these hours before its close (3 days). */
+const PAST_DAY_HOURS = 72
 
 export function NewsWindow({ win }: { win: NewsConfig }) {
   const linked = useLinkedSymbol(win, win.symbol)
   const symbol = win.mode === 'linked' ? linked : null
+  // fork: a past day sent from the OV picks window (Ash, 2026-11-07): the news ends at that
+  // day's 16:00 ET close and covers at least the 3 days before it. Market-wide news stays live.
+  const linkedDay = useLinkedDay(win)
+  const day = symbol ? linkedDay : null
+  const hours = day ? Math.max(win.hours, PAST_DAY_HOURS) : win.hours
   const enabled = win.mode === 'market' || !!symbol
-  const { data, error } = usePoll(() => api.news(symbol ? [symbol] : null, win.limit, win.hours), 60_000, enabled, [symbol, win.limit, win.hours, win.mode])
+  const { data, error } = usePoll(() => api.news(symbol ? [symbol] : null, win.limit, hours, day), day ? 600_000 : 60_000, enabled, [symbol, win.limit, hours, win.mode, day])
   const [now, setNow] = useState(() => Date.now())
   const [open, setOpen] = useState<NewsItem | null>(null)
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t) }, [])
@@ -19,11 +27,13 @@ export function NewsWindow({ win }: { win: NewsConfig }) {
   if (win.mode === 'linked' && !symbol) return <Empty title="No symbol">Link this window to a color group or set a symbol in settings.</Empty>
   if (error && !data) return <Empty title="News unavailable">{error}</Empty>
   const items = data?.items ?? []
-  if (data && items.length === 0) return <Empty title={symbol ? `No news for ${symbol}` : 'No market news'}>{`Last ${win.hours}h. ${data.error ?? ''}`}</Empty>
+  const span = day ? `The ${Math.round(hours / 24)} days up to ${day} 16:00 ET.` : `Last ${win.hours}h.`
+  if (data && items.length === 0) return <Empty title={symbol ? `No news for ${symbol}` : 'No market news'}>{`${span} ${data.error ?? ''}`}</Empty>
 
   return (
     <div className="news-list">
-      {!!data?.widened_hours && <div className="faint" style={{ padding: '3px 10px', fontSize: 10 }}>Nothing in the last {win.hours}h for {symbol}. Showing the latest from the past {Math.round(data.widened_hours / 24)} days.</div>}
+      {day && <div className="faint" style={{ padding: '3px 10px', fontSize: 10 }}>{span} Sent from the OV picks window: not live.</div>}
+      {!!data?.widened_hours && <div className="faint" style={{ padding: '3px 10px', fontSize: 10 }}>Nothing in the {day ? `${Math.round(hours / 24)} days up to ${day}` : `last ${win.hours}h`} for {symbol}. Showing the latest from the {day ? `${Math.round(data.widened_hours / 24)} days before ${day} 16:00 ET` : `past ${Math.round(data.widened_hours / 24)} days`}.</div>}
       {data?.stale && <div className="faint" style={{ padding: '3px 10px', fontSize: 10 }}>showing cached news{data.error ? ` (${data.error})` : ''}</div>}
       {items.map(it => (
         <div key={it.id || it.url} className="news-item" style={{ cursor: 'pointer' }} onClick={() => setOpen(it)} title="Open article">

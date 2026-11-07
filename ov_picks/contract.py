@@ -7,10 +7,12 @@ type and allowed value. This module is its code:
 - constants for every file name, field name, job and state, for other code to import;
 - write_picks, write_settled, write_parity: write one day record once, atomically;
 - write_preview: replace the day's preview, the ranked list as of one minute before 09:25 ET;
+- write_history: replace one of OV's past days, exported by the module (owner, 2026-11-07);
 - record_job_state: replace one job's entry in the status file;
-- read_day, read_preview, read_status: readers that never raise on a missing or bad file;
-- validate_picks, validate_settled, validate_parity, validate_preview, validate_status:
-  the writer's checks.
+- read_day, read_preview, read_history, read_status: readers that never raise on a missing
+  or bad file, and history_days, the past days exported;
+- validate_picks, validate_settled, validate_parity, validate_preview, validate_history,
+  validate_status: the writer's checks.
 
 Standard library only, so Edge Scanner (Python 3.11 and up, its own requirements) and
 the module (Python 3.12, OV's pins) both import it.
@@ -39,12 +41,17 @@ SETTLED_FILE = "settled.json"
 PARITY_FILE = "parity.json"
 PREVIEW_FILE = "preview.json"
 STATUS_FILE = "status.json"
+# OV's own past days, one file per ET trading day: out/history/<YYYY-MM-DD>.json. The owner's
+# calendar of past days (Ash, project thread, 2026-11-07): OV's 2026 picks before the module ran.
+HISTORY_DIR = "history"
+HISTORY_SUFFIX = ".json"
 
 # The "kind" field of each file, so a file put in the wrong place is refused.
 KIND_PICKS = "ov_picks"
 KIND_SETTLED = "ov_picks_settled"
 KIND_PARITY = "ov_picks_parity"
 KIND_PREVIEW = "ov_picks_preview"
+KIND_HISTORY = "ov_picks_history"
 KIND_STATUS = "ov_picks_status"
 
 # The spec's four pre-market picks (ashwinurao/edge-scanner#8): the rows marked top.
@@ -139,6 +146,11 @@ EARNINGS_LABEL_AMC = "AMC"     # reported after the prior session's close
 EARNINGS_LABEL_BMO = "BMO"     # reports before this session's open
 EARNINGS_LABELS = (EARNINGS_LABEL_AMC, EARNINGS_LABEL_BMO)
 
+# Where a history file's ranked list comes from (owner, 2026-11-07).
+HISTORY_OV_REBUILD = "ov_rebuild"   # OV's 2026 rebuild: OV's current code and config run again on clean bars
+HISTORY_OV_LIVE = "ov_live"         # OV's own live 09:25 ET scan that morning
+HISTORY_SOURCES = (HISTORY_OV_REBUILD, HISTORY_OV_LIVE)
+
 # Reader-only values. The writers never store them.
 PENDING = "PENDING"            # the 09:26 or 10:35 record is not written yet
 MISSING = "MISSING"            # reason_code: the file is not there
@@ -190,6 +202,13 @@ F_PREVIEWED_AT = "previewed_at"
 PREVIEW_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_AS_OF, F_PREVIEWED_AT, F_SHADOW,
                   F_EARNINGS_STATUS, F_METRIC_LABELS, F_PICKS)
 
+F_SOURCE = "source"
+F_EXPORTED_AT = "exported_at"
+# A history file has the picks file's ranked list (same rows, same metrics), where it comes
+# from and when the module wrote it.
+HISTORY_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_SOURCE, F_EXPORTED_AT,
+                  F_EARNINGS_STATUS, F_METRIC_LABELS, F_PICKS)
+
 F_COMPARED_AT = "compared_at"
 F_FIRST_DIFFERENCE = "first_difference"
 PARITY_FIELDS = (F_SCHEMA_VERSION, F_KIND, F_TRADING_DATE, F_COMPARED_AT, F_STATUS,
@@ -224,6 +243,11 @@ VIEW_FIELDS = ((V_HAS_PICKS, V_REASON_CODE, V_REASON, V_WARNINGS)
 V_HAS_PREVIEW = "has_preview"
 PREVIEW_VIEW_FIELDS = ((V_HAS_PREVIEW, V_REASON_CODE, V_REASON, V_WARNINGS)
                        + tuple(f for f in PREVIEW_FIELDS if f != F_KIND))
+
+# What read_history returns.
+V_HAS_HISTORY = "has_history"
+HISTORY_VIEW_FIELDS = ((V_HAS_HISTORY, V_REASON_CODE, V_REASON, V_WARNINGS)
+                       + tuple(f for f in HISTORY_FIELDS if f != F_KIND))
 
 # What read_status returns.
 V_HAS_STATUS = "has_status"
@@ -561,6 +585,33 @@ def _preview_problems(rec: Mapping, *, strict: bool, known_values: bool) -> list
     return problems + _list_rules(rec, bad)
 
 
+def _history_problems(rec: Mapping, *, strict: bool, known_values: bool) -> list[str]:
+    """A history file: one of OV's past days, with the picks file's ranked list."""
+    problems = _unknown_keys(rec, HISTORY_FIELDS, "") if strict else []
+    checks = (
+        (F_TRADING_DATE, _is_date_text, "a date written YYYY-MM-DD"),
+        (F_SOURCE, lambda v: _is_state(v, HISTORY_SOURCES, known_values), f"one of {_one_of(HISTORY_SOURCES)}"),
+        (F_EXPORTED_AT, lambda v: _is_time(v, strict=strict),
+         "a UTC time written YYYY-MM-DDTHH:MM:SSZ" if strict else "an ISO time with an offset"),
+        (F_EARNINGS_STATUS, lambda v: _is_state(v, EARNINGS_STATUSES, known_values),
+         f"one of {_one_of(EARNINGS_STATUSES)}"),
+        (F_METRIC_LABELS, _is_metric_labels,
+         f"a list of at most {MAX_METRICS} different labels, each text of 1 to {MAX_TEXT_LEN} characters"),
+        (F_PICKS, lambda v: isinstance(v, list), "a list"),
+    )
+    bad = _field_problems(rec, checks, problems)
+    problems += _rows_problems(rec, bad, strict=strict, known_values=known_values)
+    if strict and F_TRADING_DATE not in bad:
+        day = date.fromisoformat(rec[F_TRADING_DATE])
+        if day.weekday() >= 5:
+            problems.append(f"trading_date {day} is a {_WEEKDAYS[day.weekday()]}, a weekend; "
+                            "OV scans trading days only")
+        if F_EXPORTED_AT not in bad and _parse_time(rec[F_EXPORTED_AT]).astimezone(_et()).date() <= day:
+            problems.append(f"exported_at {rec[F_EXPORTED_AT]} is not after trading_date {day}: "
+                            "a history file holds a past day")
+    return problems + _list_rules(rec, bad)
+
+
 def _twice(values: list) -> list:
     seen, twice = set(), []
     for v in values:
@@ -696,6 +747,14 @@ def validate_preview(record: Any) -> list[str]:
     if problems or not isinstance(record, Mapping):
         return problems
     return _preview_problems(record, strict=True, known_values=True)
+
+
+def validate_history(record: Any) -> list[str]:
+    """Every reason the history writer would refuse `record`; [] when it would write it."""
+    _, problems = _header_problems(record, KIND_HISTORY, strict=True)
+    if problems or not isinstance(record, Mapping):
+        return problems
+    return _history_problems(record, strict=True, known_values=True)
 
 
 def validate_status(record: Any) -> list[str]:
@@ -871,6 +930,31 @@ def write_preview(out_dir: str | os.PathLike, record: Mapping) -> Path:
     return _write_replace(folder / PREVIEW_FILE, rec)
 
 
+def history_path(out_dir: str | os.PathLike, trading_date: date | str) -> Path:
+    """The history file of one ET trading day: out/history/<YYYY-MM-DD>.json."""
+    return Path(out_dir) / HISTORY_DIR / f"{_date_arg(trading_date)}{HISTORY_SUFFIX}"
+
+
+def write_history(out_dir: str | os.PathLike, record: Mapping) -> Path:
+    """Replace out/history/<trading_date>.json, atomically: one of OV's past days.
+
+    `record` holds every field in HISTORY_FIELDS; schema_version and kind may be left out.
+    A new export replaces the day's file. Raises ContractError (nothing written) when it
+    breaks a rule, or when the module froze its own picks for that day: those are the
+    day's list, and a history file never stands beside them.
+    """
+    problems = validate_history(record)
+    if problems:
+        raise ContractError("history record", problems)
+    if (day_dir(out_dir, record[F_TRADING_DATE]) / PICKS_FILE).exists():
+        raise ContractError("history record", [f"the module froze its own picks for {record[F_TRADING_DATE]} "
+                                               f"in {PICKS_FILE}; they are that day's list"])
+    rec = _ordered(record, KIND_HISTORY, HISTORY_FIELDS)
+    rec[F_METRIC_LABELS] = list(rec[F_METRIC_LABELS])
+    rec[F_PICKS] = [_row(p) for p in rec[F_PICKS]]
+    return _write_replace(history_path(out_dir, rec[F_TRADING_DATE]), rec)
+
+
 def record_job_state(out_dir: str | os.PathLike, job: str, state: str, *, at: str,
                      message: str = "", trading_date: str | None = None,
                      next_at: str | None = None) -> dict:
@@ -930,7 +1014,7 @@ def _load_json(path: Path) -> tuple[Any, str, str]:
 
 
 def _read_record(path: Path, kind: str, checker: Callable[..., list[str]],
-                 day: str) -> tuple[dict | None, int | None, str, str]:
+                 day: str, place: str = "in the folder for") -> tuple[dict | None, int | None, str, str]:
     """(record, version, "", "") or (None, version, code, why) for one day record."""
     obj, code, why = _load_json(path)
     if code:
@@ -944,7 +1028,7 @@ def _read_record(path: Path, kind: str, checker: Callable[..., list[str]],
                 rec = step(rec)
         problems = checker(rec, strict=False, known_values=version <= SCHEMA_VERSION)
         if not problems and rec[F_TRADING_DATE] != day:
-            problems = [f"trading_date is {rec[F_TRADING_DATE]}, but the file is in the folder for {day}"]
+            problems = [f"trading_date is {rec[F_TRADING_DATE]}, but the file is {place} {day}"]
         if not problems:
             return rec, version, "", ""
     return None, version, INVALID, "; ".join(problems)
@@ -1051,6 +1135,51 @@ def read_preview(out_dir: str | os.PathLike, trading_date: date | str) -> dict:
     view[F_METRIC_LABELS] = list(rec[F_METRIC_LABELS])
     view[F_PICKS] = [_row(p) for p in rec[F_PICKS]]
     return view
+
+
+def read_history(out_dir: str | os.PathLike, trading_date: date | str) -> dict:
+    """One of OV's past days, with the reason when there is none. Never raises on a bad file.
+
+    A history file is OV's own ranked list for a day before the module ran (its source says
+    which), not the module's frozen picks: read_day is those. Unknown fields are ignored and
+    older schema versions load. Raises ValueError only for a trading_date that is not a date.
+    """
+    day = _date_arg(trading_date)
+    view = {V_HAS_HISTORY: False, V_REASON_CODE: "", V_REASON: "", V_WARNINGS: [], F_SCHEMA_VERSION: None,
+            F_TRADING_DATE: day, F_SOURCE: None, F_EXPORTED_AT: None, F_EARNINGS_STATUS: None,
+            F_METRIC_LABELS: [], F_PICKS: []}
+    rec, version, code, why = _read_record(history_path(out_dir, day), KIND_HISTORY, _history_problems,
+                                           day, place="named for")
+    name = f"{HISTORY_DIR}/{day}{HISTORY_SUFFIX}"
+    if code:
+        view[V_REASON_CODE] = code
+        view[V_REASON] = {
+            MISSING: f"No OV history for {day}: {name} is not there. The module exports OV's past days "
+                     "by hand, once.",
+            UNREADABLE: f"No OV history for {day}: {name} could not be read ({why}). Check the OV picks module.",
+            INVALID: f"No OV history for {day}: {name} does not match the history contract ({why}). "
+                     "Check the OV picks module.",
+        }[code]
+        return view
+    view[V_HAS_HISTORY] = True
+    view[F_SCHEMA_VERSION] = version
+    if version > SCHEMA_VERSION:
+        view[V_WARNINGS].append(_newer_warning(name, version))
+    for key in HISTORY_FIELDS[2:]:
+        view[key] = rec[key]
+    view[F_METRIC_LABELS] = list(rec[F_METRIC_LABELS])
+    view[F_PICKS] = [_row(p) for p in rec[F_PICKS]]
+    return view
+
+
+def history_days(out_dir: str | os.PathLike) -> list[str]:
+    """The days out/history/ has a file for, oldest first. Lists names only; read_history reads one."""
+    try:
+        names = os.listdir(Path(out_dir) / HISTORY_DIR)
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    days = (name[:-len(HISTORY_SUFFIX)] for name in names if name.endswith(HISTORY_SUFFIX))
+    return sorted(day for day in days if _is_date_text(day))
 
 
 def read_status(out_dir: str | os.PathLike) -> dict:

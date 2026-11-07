@@ -105,12 +105,14 @@ def test_contract_doc_names_every_field_and_state():
     doc = (ROOT / "ov_picks" / "CONTRACT.md").read_text(encoding="utf-8")
     names = (set(c.PICKS_FIELDS) | set(c.PICK_FIELDS) | set(c.ENTRY_FIELDS) | set(c.SETTLED_FIELDS)
              | set(c.PARITY_FIELDS) | set(c.PREVIEW_FIELDS) | set(c.STATUS_FIELDS) | set(c.STATUS_ENTRY_FIELDS)
+             | set(c.HISTORY_FIELDS) | set(c.HISTORY_VIEW_FIELDS) | set(c.HISTORY_SOURCES)
              | set(c.VIEW_FIELDS) | set(c.PREVIEW_VIEW_FIELDS) | set(c.STATUS_VIEW_FIELDS) | set(c.JOBS)
              | {s for states in c.JOB_STATES.values() for s in states}
              | set(c.EARNINGS_STATUSES) | set(c.EARNINGS_LABELS)
              | {c.PENDING, c.UNREADABLE, c.MISSING, c.INVALID}
              | {c.PICKS_FILE, c.SETTLED_FILE, c.PARITY_FILE, c.PREVIEW_FILE, c.STATUS_FILE}
-             | {c.KIND_PICKS, c.KIND_SETTLED, c.KIND_PARITY, c.KIND_PREVIEW, c.KIND_STATUS}
+             | {c.KIND_PICKS, c.KIND_SETTLED, c.KIND_PARITY, c.KIND_PREVIEW, c.KIND_HISTORY, c.KIND_STATUS}
+             | {"HISTORY_DIR", "HISTORY_SUFFIX", "HISTORY_OV_REBUILD", "HISTORY_OV_LIVE"}
              | {"MAX_PICKS", "MAX_ROWS", "MAX_METRICS", "MAX_DETAILS", "MAX_TEXT_LEN", "MAX_FILE_BYTES"})
     missing = sorted(n for n in names if f"`{n}`" not in doc)
     assert missing == []
@@ -700,6 +702,127 @@ def test_the_preview_job_has_a_status_entry_like_any_job(tmp_path):
     assert jobs[c.JOB_PREVIEW]["state"] == c.PREVIEWED
 
 
+# ---------------------------------------------------------------- history file
+# The owner's calendar of past days (Ash, project thread, 2026-11-07): OV's own ranked list
+# for the days before the module ran, exported by the module into out/history/.
+
+EXPORTED_AT = "2026-11-07T15:00:00Z"    # a Saturday, after the day
+
+
+def _history(**over):
+    rec = {
+        "trading_date": DAY,
+        "source": c.HISTORY_OV_REBUILD,
+        "exported_at": EXPORTED_AT,
+        "earnings_status": c.EARNINGS_AVAILABLE,
+        "metric_labels": list(LABELS),
+        "picks": _rows(),
+    }
+    rec.update(over)
+    return rec
+
+
+def test_a_written_history_day_reads_back_with_the_picks_files_rows(tmp_path):
+    path = c.write_history(tmp_path, _history(source=c.HISTORY_OV_LIVE))
+
+    assert path == tmp_path / "history" / f"{DAY}.json" == c.history_path(tmp_path, DAY)
+    on_disk = json.loads(path.read_text(encoding="utf-8"))
+    assert list(on_disk) == list(c.HISTORY_FIELDS) and on_disk["kind"] == c.KIND_HISTORY
+    view = c.read_history(tmp_path, DAY)
+    assert set(view) == set(c.HISTORY_VIEW_FIELDS)
+    assert (view["has_history"], view["reason_code"], view["warnings"]) == (True, "", [])
+    assert (view["source"], view["exported_at"]) == (c.HISTORY_OV_LIVE, EXPORTED_AT)
+    assert view["picks"] == _rows() and view["metric_labels"] == LABELS
+    # A history day is not the module's picks, and it sits outside the day folders.
+    assert c.read_day(tmp_path, DAY)["reason_code"] == c.MISSING
+    assert not c.day_dir(tmp_path, DAY).exists()
+    assert sorted(p.name for p in path.parent.iterdir()) == [f"{DAY}.json"]   # no temp left
+
+
+def test_a_new_export_replaces_the_days_history_file(tmp_path):
+    c.write_history(tmp_path, _history())
+    c.write_history(tmp_path, _history(picks=_rows(5), exported_at="2026-11-08T15:00:00Z"))
+    view = c.read_history(tmp_path, DAY)
+    assert len(view["picks"]) == 5 and view["exported_at"] == "2026-11-08T15:00:00Z"
+
+
+def test_no_history_is_written_for_a_day_the_module_froze_its_own_picks(tmp_path):
+    c.write_picks(tmp_path, _record())
+    with pytest.raises(c.ContractError, match="froze its own picks"):
+        c.write_history(tmp_path, _history())
+    assert not (tmp_path / c.HISTORY_DIR).exists()
+
+
+@pytest.mark.parametrize("over, problem", [
+    ({"source": "rebuild_current_2026"}, "source must be one of"),
+    ({"source": None}, "source must be one of"),
+    ({"exported_at": "2026-11-05 15:00"}, "exported_at must be"),
+    ({"exported_at": "2026-11-05T23:00:00Z"}, "not after trading_date"),      # 18:00 ET the same day
+    ({"trading_date": "2026-11-07", "exported_at": "2026-11-09T15:00:00Z"}, "weekend"),
+    ({"earnings_status": "partial"}, "earnings_status must be"),
+    ({"picks": _rows()[::-1]}, "rank order"),
+    ({"picks": [_pick(1, "AAAA", top=False), _pick(2, "BBBB", top=True)]}, "must come first"),
+    ({"picks": _many(c.MAX_ROWS + 1)}, f"at most {c.MAX_ROWS}"),
+    ({"earnings_status": c.EARNINGS_UNAVAILABLE, "picks": [_pick(1, "AAAA", label="AMC")]}, "earnings_label"),
+    ({"metric_labels": ["Other"]}, "metrics labels must be"),
+    ({"frozen_at": FROZEN_AT}, "frozen_at"),
+])
+def test_the_history_writer_refuses_a_record_that_breaks_a_rule(tmp_path, over, problem):
+    with pytest.raises(c.ContractError) as err:
+        c.write_history(tmp_path, _history(**over))
+    assert any(problem in p for p in err.value.problems), err.value.problems
+    assert not (tmp_path / c.HISTORY_DIR).exists()
+
+
+@pytest.mark.parametrize("over", [
+    {"exported_at": "2026-11-06T05:00:00Z"},     # 00:00 ET the next day
+    {"picks": []},                               # no name passed OV's gates that day
+    {"picks": _rows(3)},                         # fewer than four top picks
+    {"earnings_status": c.EARNINGS_UNAVAILABLE},
+])
+def test_the_history_writer_accepts_the_same_rules_where_they_must_not_fire(tmp_path, over):
+    assert c.validate_history(_history(**over)) == []
+    c.write_history(tmp_path, _history(**over))
+
+
+def test_a_missing_or_bad_history_day_reads_as_no_history(tmp_path):
+    view = c.read_history(tmp_path, DAY)
+    assert (view["has_history"], view["reason_code"]) == (False, c.MISSING)
+    assert "history/2026-11-05.json" in view["reason"]
+    _write_json(c.history_path(tmp_path, DAY), {"schema_version": 1, "kind": c.KIND_PREVIEW, **_history()})
+    view = c.read_history(tmp_path, DAY)
+    assert (view["has_history"], view["reason_code"]) == (False, c.INVALID)
+    c.history_path(tmp_path, DAY).write_text("{", encoding="utf-8")
+    view = c.read_history(tmp_path, DAY)
+    assert (view["has_history"], view["reason_code"]) == (False, c.UNREADABLE)
+    assert "Check the OV picks module" in view["reason"]
+
+
+def test_a_history_file_named_for_another_day_is_refused_on_read(tmp_path):
+    _write_json(c.history_path(tmp_path, "2026-11-04"), {"schema_version": 1, "kind": c.KIND_HISTORY, **_history()})
+    view = c.read_history(tmp_path, "2026-11-04")
+    assert (view["has_history"], view["reason_code"]) == (False, c.INVALID)
+    assert "named for 2026-11-04" in view["reason"]
+
+
+def test_the_history_reader_ignores_unknown_fields_and_reads_a_newer_version(tmp_path):
+    rec = {"schema_version": 2, "kind": c.KIND_HISTORY, **_history(), "new_field": 1}
+    _write_json(c.history_path(tmp_path, DAY), rec)
+    view = c.read_history(tmp_path, DAY)
+    assert view["has_history"] is True and "new_field" not in view
+    assert len(view["warnings"]) == 1 and "schema version 2" in view["warnings"][0]
+
+
+def test_history_days_lists_the_exported_days_from_their_names(tmp_path):
+    assert c.history_days(tmp_path) == []
+    for day in ("2026-11-04", "2026-01-02", "2026-11-03"):
+        c.write_history(tmp_path, _history(trading_date=day))
+    folder = tmp_path / c.HISTORY_DIR
+    for name in ("README.md", "2026-13-01.json", ".2026-11-02.json.123.tmp", "2026-11-02.json.tmp"):
+        (folder / name).write_text("x", encoding="utf-8")
+    assert c.history_days(tmp_path) == ["2026-01-02", "2026-11-03", "2026-11-04"]
+
+
 # ---------------------------------------------------------------- status file
 
 def test_each_job_keeps_its_own_last_entry(tmp_path):
@@ -819,6 +942,8 @@ SAMPLE_CASES = {
     "older_schema": (True, False, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.PENDING, c.PENDING),
     "warming": (False, None, None, None, None, [], 0, None, None),
     "preview": (False, None, None, None, None, [], 0, None, None),
+    # The shadow sample's day, plus OV's past days in history/ (owner, 2026-11-07).
+    "past_days": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.SETTLED_SAME, c.PENDING),
 }
 # The warmup state of each sample without picks: still warming, or ready with a preview showing.
 NO_PICKS_WARMUP = {"warming": c.WARMING, "preview": c.DATA_READY}
@@ -833,13 +958,20 @@ def test_the_sample_folders_are_the_documented_set():
 @pytest.mark.parametrize("case", sorted(SAMPLE_CASES))
 def test_every_sample_passes_the_writers_own_check(case):
     folder = SAMPLES / case
+    history = folder / c.HISTORY_DIR
     for path in sorted(folder.rglob("*.json")):
         rec = json.loads(path.read_text(encoding="utf-8"))
-        check = {c.PICKS_FILE: c.validate_picks, c.SETTLED_FILE: c.validate_settled,
-                 c.PARITY_FILE: c.validate_parity, c.PREVIEW_FILE: c.validate_preview,
-                 c.STATUS_FILE: c.validate_status}[path.name]
+        if path.parent == history:
+            check = c.validate_history
+        else:
+            check = {c.PICKS_FILE: c.validate_picks, c.SETTLED_FILE: c.validate_settled,
+                     c.PARITY_FILE: c.validate_parity, c.PREVIEW_FILE: c.validate_preview,
+                     c.STATUS_FILE: c.validate_status}[path.name]
         assert check(rec) == [], path
     for path in folder.rglob("*"):
+        if path.parent == history:
+            assert path.name[:-len(c.HISTORY_SUFFIX)] in c.history_days(folder), path
+            continue
         assert path.is_dir() or path.name in (c.PICKS_FILE, c.SETTLED_FILE, c.PARITY_FILE,
                                               c.PREVIEW_FILE, c.STATUS_FILE), path
         assert path.is_dir() or path.parent.name in (case, DAY), path
@@ -910,3 +1042,20 @@ def test_the_preview_sample_shows_the_ranked_list_before_the_freeze():
     # No other sample has a preview: each is after the freeze, or before 09:00 ET.
     for case in set(SAMPLE_CASES) - {"preview"}:
         assert c.read_preview(SAMPLES / case, DAY)["reason_code"] == c.MISSING, case
+
+
+def test_the_past_days_sample_shows_ovs_past_days_beside_the_modules_own_day():
+    folder = SAMPLES / "past_days"
+    assert c.history_days(folder) == ["2026-11-03", "2026-11-04"]
+    for day, source in (("2026-11-03", c.HISTORY_OV_REBUILD), ("2026-11-04", c.HISTORY_OV_LIVE)):
+        view = c.read_history(folder, day)
+        assert view["has_history"] is True and view["warnings"] == [], view["reason"]
+        assert view["source"] == source
+        assert [p["ticker"] for p in view["picks"] if p["top"]] == TOP
+        assert [p["rank"] for p in view["picks"]] == list(range(1, 7))
+    # The module's own day stays its own, and has no history file.
+    assert c.read_day(folder, DAY)["has_picks"] is True
+    assert c.read_history(folder, DAY)["reason_code"] == c.MISSING
+    # No other sample has history.
+    for case in set(SAMPLE_CASES) - {"past_days"}:
+        assert c.history_days(SAMPLES / case) == [], case

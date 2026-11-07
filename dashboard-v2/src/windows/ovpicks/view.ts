@@ -3,7 +3,7 @@
 // a state this card does not know is shown as written, never guessed at.
 import { etDate, fmtTimeET } from '../../lib/time'
 import { DASH } from '../../lib/format'
-import type { OvEntry, OvJobEntry, OvPick, OvPicksAnswer, OvPicksDay, OvPicksPreview } from './types'
+import type { OvEntry, OvJobEntry, OvPick, OvPicksAnswer, OvPicksDay, OvPicksHistory, OvPicksPreview } from './types'
 
 export type Tone = 'ok' | 'info' | 'warn' | 'bad'
 export interface Note { tone: Tone; text: string }
@@ -41,6 +41,7 @@ const PROBLEM_TITLE: Record<string, string> = {
   NOT_SET_UP: 'OV picks are not set up',
   NO_READER: 'This scanner has no OV picks reader',
   NO_FOLDER: 'The OV picks folder is not there',
+  BAD_DATE: 'That day can\'t be shown',
   ERROR: 'OV picks could not be read',
 }
 
@@ -95,7 +96,10 @@ export function parityNote(day: OvPicksDay, isToday: boolean): Note | null {
 export function dayNotes(a: OvPicksAnswer, day: OvPicksDay): Note[] {
   const out: Note[] = []
   const today = a.today_et
-  if (!a.is_today) {
+  const past = isPastDay(a)
+  if (past) {
+    out.push({ tone: 'info', text: `A past day: the module's own picks, frozen at 09:25 ET on ${dayLabel(day.trading_date)}. ${PAST_CLICK}` })
+  } else if (!a.is_today) {
     const why = sentence(a.market_note) || 'These are not today\'s picks.'
     // The route's note already names the next scan on a holiday; say it once.
     const next = a.next_scan_et && !/next scan/i.test(why) ? ` Next scan: ${whenET(a.next_scan_et, today)}.` : ''
@@ -104,9 +108,9 @@ export function dayNotes(a: OvPicksAnswer, day: OvPicksDay): Note[] {
   if (day.late && day.frozen_at) out.push({ tone: 'warn', text: `LATE: the first scan ran at ${timeET(day.frozen_at, true)}, after 09:25 ET. These are not on-time picks.` })
   if (day.warmup_state === 'NOT_READY') out.push({ tone: 'warn', text: `Warmup was not ready at the 09:20 ET deadline, and the picks were made anyway. Why: ${sentence(day.warmup_reason ?? '')}` })
   if (day.earnings_status && day.earnings_status !== 'available') {
-    out.push({ tone: 'bad', text: `Earnings data is ${day.earnings_status}, so no row has an earnings label today.` })
+    out.push({ tone: 'bad', text: `Earnings data is ${day.earnings_status}, so no row has an earnings label ${past ? 'that day' : 'today'}.` })
   }
-  out.push(...listNotes(a, day.picks, 'today'))
+  out.push(...listNotes(a, day.picks, past ? 'that day' : 'today'))
   for (const note of [settledNote(day, a.is_today), parityNote(day, a.is_today)]) if (note) out.push(note)
   if (day.reference_promoted.length) out.push({ tone: 'info', text: `New listings this week: ${day.reference_promoted.join(', ')}.` })
   if (day.reference_state === 'REF_WARN') {
@@ -223,10 +227,64 @@ export function noPicks(a: OvPicksAnswer, day: OvPicksDay): { title: string; not
   return { title, notes }
 }
 
-/** Every warning the route, the day and the status file carry, once each. */
+/** Every warning the route, the day, the history file and the status file carry, once each. */
 export function allWarnings(a: OvPicksAnswer): string[] {
   return Array.from(new Set([...(a.warnings ?? []), ...(a.day?.warnings ?? []), ...(a.preview?.warnings ?? []),
-    ...(a.status?.warnings ?? [])]))
+    ...(a.history?.warnings ?? []), ...(a.status?.warnings ?? [])]))
+}
+
+// ── past days: the calendar (Ash, 2026-11-07) ───────────────────────────────
+
+/** The answer is for a day the trader picked before today, not today's. */
+export const isPastDay = (a: OvPicksAnswer) => !!a.asked_date && !a.is_today
+
+const PAST_CLICK = 'A click on a ticker shows that day in the linked charts and news.'
+
+/** Where a history file's list comes from (ov_picks/CONTRACT.md, "History file"). */
+const HISTORY_SOURCE: Record<string, { text: string; title: string; note: string }> = {
+  ov_rebuild: {
+    text: 'OV 2026 rebuild',
+    title: 'OV\'s current code and settings, run again on clean bars for this day. It can differ from what OV showed live that morning.',
+    note: 'OV\'s 2026 rebuild: OV\'s current code and settings, run again on clean bars for this day, before this module ran. It can differ from what OV showed live that morning.',
+  },
+  ov_live: {
+    text: 'OV live scan',
+    title: 'OV\'s own live 09:25 ET scan that morning.',
+    note: 'OV\'s own live 09:25 ET scan that morning, before this module ran.',
+  },
+}
+
+export function historyBadges(h: OvPicksHistory): Badge[] {
+  const src = h.source ? HISTORY_SOURCE[h.source] : undefined
+  return [
+    { tone: 'info', text: 'past day', title: 'Not today: a day picked in the calendar.' },
+    src ? { tone: 'info', text: src.text, title: src.title } : { tone: 'warn', text: h.source || 'source unknown', title: 'Where this list comes from, as the file says.' },
+  ]
+}
+
+export function historyNotes(a: OvPicksAnswer, h: OvPicksHistory): Note[] {
+  const out: Note[] = []
+  const src = h.source ? HISTORY_SOURCE[h.source] : undefined
+  out.push({ tone: 'info', text: `${src ? src.note : `From "${h.source ?? ''}", as the file says.`} ${PAST_CLICK}` })
+  if (h.earnings_status && h.earnings_status !== 'available') {
+    out.push({ tone: 'bad', text: `Earnings data was ${h.earnings_status} that day, so no row has an earnings label.` })
+  }
+  out.push(...listNotes(a, h.picks, 'that day'))
+  return out
+}
+
+/** A past day with neither the module's picks nor OV's history. */
+export function noPastDay(a: OvPicksAnswer, day: OvPicksDay): { title: string; notes: Note[] } {
+  const notes: Note[] = []
+  const unusable = (code: string | undefined) => code === 'UNREADABLE' || code === 'INVALID'
+  if (unusable(day.reason_code)) notes.push({ tone: 'bad', text: day.reason })
+  if (a.history && unusable(a.history.reason_code)) notes.push({ tone: 'bad', text: a.history.reason })
+  const bad = notes.length > 0
+  if (!bad) {
+    notes.push({ tone: 'info', text: `Nothing is saved for ${dayLabel(day.trading_date)}: no picks from this module and no OV list. It may be a market holiday, or a day before the saved history starts.` })
+    notes.push({ tone: 'info', text: 'Use ‹ and › to step through the days that have a list.' })
+  }
+  return { title: bad ? 'That day\'s file can\'t be used' : 'Nothing saved for this day', notes }
 }
 
 // ── the ranked list ─────────────────────────────────────────────────────────
