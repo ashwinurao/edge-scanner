@@ -47,6 +47,11 @@ saved work survives) wins over anything here.
   indicators are tested with hand-built bars, including the bar where they must
   NOT fire. Tests never reach the network: inject fakes.
 - Keep scratch artifacts in the ignored `.logs/` folder.
+- GitHub checks (Ash, project thread, 2026-11-07): `.github/workflows/docker.yml` runs
+  the tests inside `python:3.13-slim` (the Dockerfile's base) and builds the server image,
+  dashboard included, on every PR and push to `main`. Upstream's `ci.yml` runs too, with
+  the dashboard lint. Do not merge on a red check. GitHub-hosted machines only: this repo
+  is public, so it never gets a self-hosted runner.
 
 ## Branches and pull requests
 
@@ -74,7 +79,7 @@ recommended option only where it is reversible and not protected.
 - Approved test expectations.
 - New or upgraded dependencies, new network calls or external services.
 - Anything on the live server beyond the standard pull and rebuild of `main`.
-- Turning on GitHub-hosted CI for the fork.
+- New workflows that deploy, use secrets or run on a self-hosted runner.
 
 ## Style
 

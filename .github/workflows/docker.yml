@@ -1,0 +1,61 @@
+name: Docker
+
+# Fork CI (Ash, project thread, 2026-11-07): every pull request and every push to main
+# runs the tests inside the Dockerfile's own Python and builds the image Unraid runs
+# (which also builds the dashboard on the Dockerfile's Node). Upstream's ci.yml is left
+# as it is, so upstream syncs stay easy (CLAUDE.md); it still runs the dashboard lint.
+# GitHub-hosted machines only: never add a self-hosted runner to this public repo, because
+# a pull request from any fork could run code on it.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests in python:3.13-slim
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The Dockerfile's base image, so the tests see the same Python the server runs
+    # (upstream's ci.yml tests on 3.11).
+    container: python:3.13-slim
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: python -m pip install --no-cache-dir -r requirements.txt
+
+      - name: Run tests
+        # tests/private only exists in the owner's repo and needs Windows-only extras.
+        run: python -m pytest -q --ignore=tests/private
+
+  image:
+    name: Build the Unraid image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # The same build Unraid runs with `docker compose up -d --build`: the dashboard stage
+      # (npm ci and npm run build on Node 22) and the scanner. Nothing is pushed.
+      - name: Build image
+        run: docker build --tag edge-scanner:ci .
+
+      # The image loads the API as its own user, without a .env and without a network,
+      # and carries the built dashboard it serves at /v2.
+      - name: Check the image
+        run: |
+          docker run --rm --network none edge-scanner:ci python -c "import scanner.api_v2"
+          docker run --rm --network none edge-scanner:ci test -f dashboard-v2/dist/index.html
