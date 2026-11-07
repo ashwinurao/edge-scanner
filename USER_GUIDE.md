@@ -235,7 +235,7 @@ while dragging to turn off snapping.
 | **Watchlist** | Editable symbol lists with live columns |
 | **Clock** | Eastern time, session phase, market regime, SPY and feed health |
 | **Setup check** | For one symbol, what every setup did over the last few minutes and which condition passed or failed. Use it to answer "why did (or didn't) this alert fire?" |
-| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, each row's full details on a click, the day's flags, and why there are no picks yet. From 09:00 to 09:25 ET, a preview of the list as of the latest minute. A calendar shows past days, and a ticker click there sends that day to linked charts and news. Display only. See [The OV picks window](#the-ov-picks-window) |
+| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, a row click sends the ticker to linked charts and news, ▸ shows the row's full details, the day's flags, and why there are no picks yet. From 09:00 to 09:25 ET, a preview of the list as of the latest minute. A calendar shows past days: a row click there sends that day too, and the "OV picks" watchlist holds that day's top picks. Display only. See [The OV picks window](#the-ov-picks-window) |
 
 ### Linking windows
 
@@ -302,8 +302,8 @@ seconds; **Refresh** reads it now. The code is in `dashboard-v2/src/windows/ovpi
 their rows are tinted, have an accent bar and a **top** badge, and a line separates them from the
 rest of the list.
 
-- **Ticker** comes first and stays in view when the table scrolls sideways. Click the ticker to
-  show the name in the window's linked charts. Badges beside it: **top** for a top pick, **AMC**
+- **Ticker** comes first and stays in view when the table scrolls sideways. Badges beside it:
+  **top** for a top pick, **AMC**
   (reported after the prior close) or **BMO** (reports before this open) for an earnings label,
   and **no setups** for a name outside the scanner's universe (it gets no live bars and no
   setups, but charts work).
@@ -312,9 +312,14 @@ rest of the list.
   own. Numbers are right-aligned: whole numbers with thousands separators, others to two
   decimals (up to four below 1). A dash means no value.
 
-**Click a row** (or focus it and press Enter) to open its full details under it: every field the
-module wrote for that name, label and value, with numbers as written. Click it again to close
-it. One row is open at a time.
+**Click a row** (or focus it and press Enter) to show its ticker in the window's linked charts
+and news, like a watchlist row (the owner's request, 2026-11-07). The row stays marked, so you
+can see which name the charts show. In a window without a link color the click does nothing
+else.
+
+**Click the ▸ arrow** at the left of a row to open its full details under it: every field the
+module wrote for that name, label and value, with numbers as written. Click ▾ to close them.
+One row is open at a time.
 
 **Notes under the table**, when they apply:
 
@@ -365,8 +370,7 @@ request, 2026-11-07):
   goes back to today. The date box picks any day up to today. **Today** goes back to the live
   list. A reload of the page also opens on today.
 - A past day shows the module's own picks for it when it ran that day, frozen at 09:25 ET as
-  they were, with a **past day** badge. The notes are about that day; the watchlist and the
-  notice stay with today's picks.
+  they were, with a **past day** badge. The notes are about that day.
 - For a day before the module ran, the window shows OV's own ranked list for it, from the
   module's history files, with the same columns and row details and one of these badges:
   **OV 2026 rebuild** (OV's current code and settings, run again on clean bars for that day; it
@@ -374,13 +378,19 @@ request, 2026-11-07):
   scan that morning).
 - A day with neither says "Nothing saved for this day": a market holiday, or a day before the
   saved history starts. A file that can't be used says so, with the reason.
-- **Click a ticker** on a past day to send the ticker and that day to the window's linked
+- **Click a row** on a past day to send the ticker and that day to the window's linked
   windows. A linked **chart** then ends on that day (each frame keeps its usual history before
   it) and shows a "2026-11-04, not live ✕" chip; click the chip to show the stock live again. A
   linked **news** window shows the news up to that day's 16:00 ET close, over at least 3 days,
   and says so at the top. A ticker clicked in any other window, or typed into the chart, puts
   the linked windows back on live. Scanner alerts are today's, so a past day's chart does not
   mark them.
+- **The "OV picks" watchlist follows the calendar** (the owner's request, 2026-11-07). On a past
+  day it holds that day's top picks, and its name shows the date ("OV picks · 2026-10-30"). A
+  click on a name in it sends that day too, like a row click. Back on **Today** (or after a
+  reload, which opens on today), it holds the shown day's top picks again under its plain name.
+  If today has no picks yet, it keeps the past day until the scanner fills it at 09:25 ET,
+  which always puts today's picks back. The notice is today's only.
 - Past days are read every 5 minutes, not every 15 seconds: they do not change.
 
 **Set-up problems** replace the whole window: "OV picks are not set up" (`OV_PICKS_DIR` is not

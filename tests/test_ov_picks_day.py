@@ -134,6 +134,20 @@ def test_the_upsert_replaces_yesterdays_names_and_leaves_other_lists_alone(tmp_p
     assert (lists["ov-picks"]["name"], lists["ov-picks"]["symbols"]) == ("OV morning", NAMES)
 
 
+def test_the_upsert_puts_today_back_over_a_past_day_from_the_calendar(tmp_path):
+    # The OV picks window's calendar put a past day's top picks there (Ash, 2026-11-07):
+    # the morning's picks replace them, and the name that showed the date goes too.
+    d = Day(tmp_path, "frozen")
+    d.watchlists.save({"id": "ov-picks", "name": "OV picks · 2026-10-30", "symbols": ["OLD1", "OLD2"],
+                       morning.PAST_DAY_FIELD: "2026-10-30", "updatedAt": "x"})
+
+    d.check("2026-11-05 09:25:05")
+
+    wl = d.ov_list()
+    assert (wl["name"], wl["symbols"]) == ("OV picks", NAMES)
+    assert morning.PAST_DAY_FIELD not in wl
+
+
 def test_the_rows_below_the_top_picks_stay_off_the_watchlist_and_the_notice(tmp_path):
     # The owner picks and sizes from the ranked list by hand (Ash, 2026-11-06); the
     # watchlist and the notice carry the top picks only.

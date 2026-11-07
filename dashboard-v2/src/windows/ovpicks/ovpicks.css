@@ -31,10 +31,17 @@
 .ovp-toprow:hover td { background: color-mix(in oklab, var(--accent) 16%, var(--panel)); }
 .ovp-toprow td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .ovp-split td { border-bottom: 1px solid color-mix(in oklab, var(--accent) 45%, var(--border)); }
-.ovp-open td { background: var(--row-sel); }
-.ovp-chev { display: inline-block; width: 12px; color: var(--text-faint); font-size: 10px; }
-.ovp-sym { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: var(--text); font-weight: 700; font-family: var(--font-mono); }
-.ovp-sym:hover { color: var(--accent); }
+/* The row last sent to the linked charts and news (a row click, Ash, 2026-11-07). */
+.ovp-sel td { background: var(--row-sel); }
+.ovp-sel td:first-child { box-shadow: inset 3px 0 0 var(--text-dim); }
+.ovp-toprow.ovp-sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+/* The ▸ arrow opens the row's details. */
+.ovp-chev { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin: 0 2px 0 -4px; padding: 0; border: 0; border-radius: 3px; background: none; cursor: pointer; color: var(--text-faint); font-size: 10px; }
+.ovp-chev:hover { color: var(--text); background: var(--panel-2); }
+.ovp-chev:focus-visible { outline: 1px solid var(--accent); }
+.ovp-open .ovp-chev { color: var(--text); }
+.ovp-sym { color: var(--text); font-weight: 700; font-family: var(--font-mono); }
+.ovp-row:hover .ovp-sym { color: var(--accent); }
 .ovp-tag { margin-left: 6px; }
 
 /* A row's full details, under the row. */
