@@ -238,7 +238,7 @@ export function allWarnings(a: OvPicksAnswer): string[] {
 /** The answer is for a day the trader picked before today, not today's. */
 export const isPastDay = (a: OvPicksAnswer) => !!a.asked_date && !a.is_today
 
-const PAST_CLICK = 'A click on a ticker shows that day in the linked charts and news.'
+const PAST_CLICK = 'A click on a row shows that day in the linked charts and news.'
 
 /** Where a history file's list comes from (ov_picks/CONTRACT.md, "History file"). */
 const HISTORY_SOURCE: Record<string, { text: string; title: string; note: string }> = {

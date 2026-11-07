@@ -77,7 +77,8 @@ export function WatchlistWindow({ win }: { win: WatchlistConfig }) {
         <span className="faint" style={{ fontSize: 10.5 }}>{symbols.length} symbols</span>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        <VirtualTable<Row> rows={rows} columns={columns} rowKey={r => r.symbol} onRowClick={r => linkSymbol(win, r.symbol, null)}
+        {/* fork: a list holding an OV picks past day sends that day with the symbol */}
+        <VirtualTable<Row> rows={rows} columns={columns} rowKey={r => r.symbol} onRowClick={r => linkSymbol(win, r.symbol, null, wl?.ov_picks_day ?? null)}
           emptyText={<span>Empty list. Type a symbol above and press Enter.</span>}
           colWidths={win.colWidths} onColWidths={colWidths => updateWindow(win.id, { colWidths })} />
       </div>

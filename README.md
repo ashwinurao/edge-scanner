@@ -256,7 +256,8 @@ contract needs the same change in the module's repo ([CONTRIBUTING.md](CONTRIBUT
 scanner shows the day's picks. It never writes that folder.
 
 - The **OV picks** window (Add window menu) shows the day's ranked list in rank order, the top
-  picks highlighted, in the columns the module sends; a click on a row shows all of its details.
+  picks highlighted, in the columns the module sends. A click on a row sends its ticker to the
+  window's linked charts and news; the ▸ arrow shows all of its details.
   It also shows the warmup, LATE, settled and shadow flags, the check against OV, the week's new
   listings, and when the market is closed, the next scan. It is display only: it places no orders.
   It reads `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).
@@ -271,8 +272,11 @@ scanner shows the day's picks. It never writes that folder.
   live list. A past day shows the module's own frozen picks for it, or, for a day before the
   module ran, OV's own list from the module's history files (`history/YYYY-MM-DD.json`, written
   once by the module's `history` job), labelled "OV 2026 rebuild" or "OV live scan". A click on
-  a ticker there sends the ticker and that day to the window's linked charts and news: charts
-  end on that day and news covers the 3 days up to its 16:00 ET close. Any other click puts
+  a row there sends the ticker and that day to the window's linked charts and news: charts
+  end on that day and news covers the 3 days up to its 16:00 ET close. The "OV picks"
+  watchlist then holds that day's top picks, named with the date (`ov_picks_day` on the list;
+  the 09:25 fill in `scanner/ov_picks_day.py` clears it), and its clicks send that day too.
+  Any other click puts
   them back on live. The routes take an optional `?date=YYYY-MM-DD`: `GET /api/v2/ov-picks`,
   `GET /api/bars/{symbol}/{timeframe}` and `GET /api/v2/news` (`scanner/past_day.py`);
   `GET /api/v2/ov-picks/days` lists the days. Without `date` every route is unchanged. Past

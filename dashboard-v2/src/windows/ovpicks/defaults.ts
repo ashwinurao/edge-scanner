@@ -8,6 +8,8 @@ export const OV_PICKS_ICON = '◆'
 export const OV_PICKS_SIZE: WindowSize = { w: 860, h: 460, minW: 380, minH: 200 }
 /** The watchlist the scanner fills each morning (scanner/ov_picks_day.py WATCHLIST_ID). */
 export const OV_PICKS_WATCHLIST_ID = 'ov-picks'
+/** Its name (scanner/ov_picks_day.py WATCHLIST_NAME). */
+export const OV_PICKS_WATCHLIST_NAME = 'OV picks'
 /** The card polls the route; the picks file changes once a day. */
 export const OV_PICKS_POLL_MS = 15_000
 /** A past day's list does not change: the card reads it again only now and then. */

@@ -54,6 +54,10 @@ ENV_VAR = "OV_PICKS_DIR"
 MARKER_PATH = Path("data/ov_picks/notified.json")
 WATCHLIST_ID = "ov-picks"
 WATCHLIST_NAME = "OV picks"
+# Set on the watchlist while it holds a past day's top picks, from the OV picks window's
+# calendar (Ash, 2026-11-07; dashboard-v2/src/windows/ovpicks/api.ts). The morning
+# upsert drops it: the list is today's again.
+PAST_DAY_FIELD = "ov_picks_day"
 NOTICE_KIND = "ov_picks"            # the notice's `notice` and `setup` fields
 NOTICE_TRIGGER = "ov_picks_ready"
 NOTICE_SOURCE = "custom"            # FeedHub.SOURCES; the dashboard drops any other source
@@ -125,9 +129,11 @@ class MorningPicks:
     def _upsert_watchlist(self, tickers: list[str], now_et: datetime) -> None:
         existing = next((w for w in self.watchlists.load_all() if w.get("id") == WATCHLIST_ID), {})
         rec = dict(existing)
+        # A past day the window put there goes, with the name that showed its date.
+        past = rec.pop(PAST_DAY_FIELD, None)
         # Keep a name the trader gave the list; the names in it are the day's top picks only.
-        rec.update(id=WATCHLIST_ID, name=existing.get("name") or WATCHLIST_NAME, symbols=tickers,
-                   updatedAt=_utc_text(now_et))
+        name = WATCHLIST_NAME if past else existing.get("name") or WATCHLIST_NAME
+        rec.update(id=WATCHLIST_ID, name=name, symbols=tickers, updatedAt=_utc_text(now_et))
         self.watchlists.save(rec)
 
     def _marker_store(self) -> AtomicJsonStore:

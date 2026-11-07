@@ -303,7 +303,11 @@ export interface NewsPayload { fetched_at: string; stale?: boolean; error?: stri
 export interface UniverseMeta { last_price?: number; avg_vol_20d?: number; avg_dollar_vol_20d?: number; atr_pct?: number; sector_etf?: string }
 export interface UniverseMetaPayload { symbols: string[]; meta: Record<string, UniverseMeta> }
 
-export interface Watchlist { id: string; name: string; symbols: string[]; updatedAt: string }
+export interface Watchlist {
+  id: string; name: string; symbols: string[]; updatedAt: string
+  /** fork: the past day the "OV picks" list holds, set by the OV picks window's calendar */
+  ov_picks_day?: string
+}
 
 // ── Config panel (/api/v2/settings) ─────────────────────────────────────────
 

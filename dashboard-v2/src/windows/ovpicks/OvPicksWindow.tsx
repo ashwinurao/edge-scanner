@@ -1,15 +1,16 @@
 // fork: OV picks card (ashwinurao/edge-scanner#20; spec #8, US1-US21 "Seeing the picks").
 // The day's ranked list from the OV picks module, frozen at 09:25:00 ET and served
 // read-only at /api/v2/ov-picks: every name it ranked, OV's top picks first and
-// highlighted, in the columns the module chose (`metric_labels`). A click on a row opens
-// its full details. Display only: no order buttons and no sizing; the trader picks and
-// sizes by hand (Ash, 2026-11-06). A click on a ticker drives the window's link group,
-// like a watchlist row. From 09:00 to 09:25 ET, before the freeze, it shows the module's
+// highlighted, in the columns the module chose (`metric_labels`). A click on a row drives
+// the window's link group, like a watchlist row; the ▸ arrow opens the row's full details
+// (Ash, 2026-11-07). Display only: no order buttons and no sizing; the trader picks and
+// sizes by hand (Ash, 2026-11-06). From 09:00 to 09:25 ET, before the freeze, it shows the module's
 // preview instead: the same ranked list as of the latest minute, marked not frozen
 // (Ash, 2026-11-06). The watchlist sync runs for the frozen picks only.
 // A calendar shows a past day (Ash, 2026-11-07): the module's own frozen picks for it, or,
-// before the module ran, OV's own list from the history files. A click on a ticker there
-// sends that day with it, so the linked charts and news show the stock as it was then.
+// before the module ran, OV's own list from the history files. A click on a row there
+// sends that day with the ticker, so the linked charts and news show the stock as it was
+// then, and the "OV picks" watchlist holds that day's top picks until Today.
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { usePoll } from '../../lib/usePoll'
 import { DASH } from '../../lib/format'
@@ -17,7 +18,7 @@ import { linkSymbol } from '../../stores/linkStore'
 import { useWatchlists } from '../../stores/watchlistsStore'
 import { Empty } from '../../components/primitives'
 import type { OvEntry, OvPick, OvPicksAnswer, OvPicksConfig, OvPicksHistory, OvPicksPreview } from './types'
-import { fetchOvPicks, fetchOvPicksDays, syncOvPicksWatchlist, watchlistHas } from './api'
+import { fetchOvPicks, fetchOvPicksDays, fillOvPicksWatchlist, syncOvPicksWatchlist, watchlistHas } from './api'
 import { OV_PICKS_DAYS_POLL_MS, OV_PICKS_PAST_POLL_MS, OV_PICKS_POLL_MS, OV_PICKS_WATCHLIST_ID } from './defaults'
 import { allWarnings, badges, dayLabel, dayNotes, fmtValue, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, topPicks, wholeColumn, whenET, type Note } from './view'
 import './ovpicks.css'
@@ -70,22 +71,29 @@ interface TableProps {
   inUniverse: Record<string, boolean> | null
   openTicker: string | null
   toggle: (ticker: string) => void
+  /** the row last sent to the linked windows */
+  selTicker: string | null
+  pick: (ticker: string) => void
   /** the "top" badge's title */
   topTitle: string
-  /** a past day: a ticker click sends it to the linked windows; null for today */
+  /** a past day: a row click sends it to the linked windows; null for today */
   linkDay: string | null
 }
 
-/** The ranked list: the frozen picks, a preview of them, or a past day's list. */
-function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, topTitle, linkDay }: TableProps) {
+/** The ranked list: the frozen picks, a preview of them, or a past day's list. A click on a
+ *  row sends its ticker to the linked windows; the ▸ arrow opens its details. */
+function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTicker, pick, topTitle, linkDay }: TableProps) {
   // A column of numbers is right-aligned, header included.
   const numeric = labels.map(l => picks.some(p => typeof metricValue(p, l) === 'number'))
   const whole = labels.map(l => wholeColumn(picks, l))
   const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, ticker: string) => {
     if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
     e.preventDefault()
-    toggle(ticker)
+    pick(ticker)
   }
+  const rowTitle = (ticker: string) => win.link === 'none'
+    ? 'Pick a link color for this window to show its tickers in charts and news'
+    : `Click to show ${ticker}${linkDay ? ` on ${linkDay}` : ''} in this window's linked charts and news`
   return (
     <table className="ovp-table">
       <thead>
@@ -100,13 +108,14 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, topTi
           const isOpen = openTicker === p.ticker
           // A line under the last top pick, where the rest of the ranked list starts.
           const lastTop = p.top && !picks[i + 1]?.top && i + 1 < picks.length
-          const cls = ['ovp-row', p.top ? 'ovp-toprow' : '', lastTop ? 'ovp-split' : '', isOpen ? 'ovp-open' : ''].filter(Boolean).join(' ')
+          const cls = ['ovp-row', p.top ? 'ovp-toprow' : '', lastTop ? 'ovp-split' : '', isOpen ? 'ovp-open' : '', selTicker === p.ticker ? 'ovp-sel' : ''].filter(Boolean).join(' ')
           return (
             <Fragment key={p.ticker}>
-              <tr className={cls} tabIndex={0} aria-expanded={isOpen} onClick={() => toggle(p.ticker)} onKeyDown={e => onRowKey(e, p.ticker)} title={isOpen ? 'Click to close the details' : 'Click for the full row'}>
+              <tr className={cls} tabIndex={0} onClick={() => pick(p.ticker)} onKeyDown={e => onRowKey(e, p.ticker)} title={rowTitle(p.ticker)}>
                 <td className="ovp-tk">
-                  <span className="ovp-chev" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
-                  <button className="ovp-sym sym" onClick={e => { e.stopPropagation(); linkSymbol(win, p.ticker, null, linkDay) }} title={linkDay ? `Show ${p.ticker} on ${linkDay} in this window's linked charts and news` : `Show ${p.ticker} in this window's linked charts`}>{p.ticker}</button>
+                  <button className="ovp-chev" aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} the details of ${p.ticker}`}
+                    onClick={e => { e.stopPropagation(); toggle(p.ticker) }} title={isOpen ? 'Close the details' : 'Show every field of this row'}>{isOpen ? '▾' : '▸'}</button>
+                  <span className="ovp-sym sym">{p.ticker}</span>
                   {p.top && <span className="badge ovp-b-ok ovp-tag" title={topTitle}>top</span>}
                   {p.earnings_label && <span className="badge ovp-b-info ovp-tag" title="Earnings label">{p.earnings_label}</span>}
                   {outside && <span className="badge ovp-b-warn ovp-tag" title="Not in the scanner's universe: no live bars and no setups. Charts still work.">no setups</span>}
@@ -180,12 +189,38 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
   const [open, setOpen] = useState<{ key: string; ticker: string } | null>(null)
   const openTicker = open?.key === dayKey ? open.ticker : null
   const toggle = (ticker: string) => setOpen(openTicker === ticker ? null : { key: dayKey, ticker })
+  // The row last sent to the linked windows, marked in this day's list.
+  const [sel, setSel] = useState<{ key: string; ticker: string } | null>(null)
+  const selTicker = sel?.key === dayKey ? sel.ticker : null
+  const pickFor = (linkDay: string | null) => (ticker: string) => {
+    linkSymbol(win, ticker, null, linkDay)
+    setSel({ key: dayKey, ticker })
+  }
+
+  // The "OV picks" watchlist follows the calendar (Ash, 2026-11-07): a past day puts that
+  // day's top picks there, named with its date; back on today's view, the shown day's picks
+  // go back. Without a list for the day it stays as it is.
+  const wlLoaded = useWatchlists(s => s.loaded)
+  const listDay = ovList?.ov_picks_day ?? null
+  const shownTop = (rows: OvPick[]) => rows.filter(p => p.top).sort((x, y) => x.rank - y.rank).map(p => p.ticker)
+  const wantList: { day: string | null; tickers: string[] } | null = !data ? null
+    : past ? (history ? { day: history.trading_date, tickers: shownTop(history.picks) }
+      : day?.has_picks ? { day: day.trading_date, tickers: shownTop(day.picks) } : null)
+    : listDay && day?.has_picks ? { day: null, tickers: shownTop(day.picks) } : null
+  const wantKey = wantList ? `${wantList.day ?? ''}|${wantList.tickers.join(',')}` : ''
+  const haveKey = ovList ? `${listDay ?? ''}|${ovList.symbols.join(',')}` : ''
+  useEffect(() => {
+    if (!wlLoaded || !wantList || wantKey === haveKey) return
+    fillOvPicksWatchlist(wantList.tickers, wantList.day).catch(() => { /* the next answer tries again */ })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wlLoaded, wantKey, haveKey])
 
   // Keep this tab's "OV picks" watchlist in step with the scanner's morning upsert.
   // Runs on every poll (`data`), at most WATCHLIST_SYNC_TRIES times per day's picks.
   const sync = useRef({ key: '', tries: 0, done: false })
   useEffect(() => {
-    if (!picksKey) return
+    // While the list holds a past day, the effect below puts today's picks back itself.
+    if (!picksKey || ovList?.ov_picks_day) return
     const s = sync.current
     if (s.key !== picksKey) { s.key = picksKey; s.tries = 0; s.done = false }
     if (s.done || s.tries >= WATCHLIST_SYNC_TRIES) return
@@ -193,7 +228,7 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
     syncOvPicksWatchlist(picksKey.split('|')[2].split(','))
       .then(ok => { if (ok && sync.current.key === picksKey) sync.current.done = true })
       .catch(() => { /* the next poll tries again */ })
-  }, [picksKey, data])
+  }, [picksKey, data, ovList?.ov_picks_day])
 
   const today = data?.today_et ?? answer?.today_et ?? daysAnswer?.today_et ?? ''
   const shown = picked ?? data?.trading_date ?? today
@@ -239,13 +274,13 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
         <div className="ovp-scroll">
           {preview.picks.length > 0 && (
             <RankedTable win={win} labels={preview.metric_labels} picks={preview.picks} inUniverse={data.in_universe}
-              openTicker={openTicker} toggle={toggle} topTitle={`One of OV's top picks as of ${asOf || 'this preview'}: not frozen`} linkDay={null} />
+              openTicker={openTicker} toggle={toggle} selTicker={selTicker} pick={pickFor(null)} topTitle={`One of OV's top picks as of ${asOf || 'this preview'}: not frozen`} linkDay={null} />
           )}
           <Notes notes={previewNotes(data, preview)} />
           <Warnings a={data} />
           {preview.picks.length > 0 && (
             <div className="ovp-foot faint">
-              A preview, not the picks: highlighted rows are OV's top picks as of that minute, and they may change until 09:25 ET. Click a row for its full details. This card shows the list only: it places no orders and sizes nothing.
+              A preview, not the picks: highlighted rows are OV's top picks as of that minute, and they may change until 09:25 ET. Click a row to show it in the linked charts and news; click ▸ for its full details. This card shows the list only: it places no orders and sizes nothing.
             </div>
           )}
         </div>
@@ -268,13 +303,13 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
         <div className="ovp-scroll">
           {history.picks.length > 0 && (
             <RankedTable win={win} labels={history.metric_labels} picks={history.picks} inUniverse={null}
-              openTicker={openTicker} toggle={toggle} topTitle="One of OV's top picks that day" linkDay={history.trading_date} />
+              openTicker={openTicker} toggle={toggle} selTicker={selTicker} pick={pickFor(history.trading_date)} topTitle="One of OV's top picks that day" linkDay={history.trading_date} />
           )}
           <Notes notes={historyNotes(data, history)} />
           <Warnings a={data} />
           {history.picks.length > 0 && (
             <div className="ovp-foot faint">
-              OV's own list for a past day. Highlighted rows are OV's top picks that day. Click a row for its full details. This card shows the list only: it places no orders and sizes nothing.
+              OV's own list for a past day. Highlighted rows are OV's top picks that day; they are in the "OV picks" watchlist until you go back to Today. Click a row to show it on that day in the linked charts and news; click ▸ for its full details. This card shows the list only: it places no orders and sizes nothing.
             </div>
           )}
         </div>
@@ -318,15 +353,15 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
       <div className="ovp-scroll">
         {day.picks.length > 0 && (
           <RankedTable win={win} labels={day.metric_labels} picks={day.picks} inUniverse={data.in_universe}
-            openTicker={openTicker} toggle={toggle} topTitle={past ? 'One of OV\'s top picks that day' : 'One of OV\'s top picks today'}
-            linkDay={past ? day.trading_date : null} />
+            openTicker={openTicker} toggle={toggle} selTicker={selTicker} pick={pickFor(past ? day.trading_date : null)}
+            topTitle={past ? 'One of OV\'s top picks that day' : 'One of OV\'s top picks today'} linkDay={past ? day.trading_date : null} />
         )}
         <Notes notes={dayNotes(data, day)} />
         <Warnings a={data} />
         {day.picks.length > 0 && (
           <div className="ovp-foot faint">
-            {data.is_today && inList ? 'The top picks are in the "OV picks" watchlist. ' : ''}
-            Highlighted rows are OV's top picks{past ? ' that day' : ''}. Click a row for its full details. This card shows the list only: it places no orders and sizes nothing.
+            {(data.is_today || past) && inList ? 'The top picks are in the "OV picks" watchlist. ' : ''}
+            Highlighted rows are OV's top picks{past ? ' that day' : ''}. Click a row to show it{past ? ' on that day' : ''} in the linked charts and news; click ▸ for its full details. This card shows the list only: it places no orders and sizes nothing.
           </div>
         )}
       </div>
