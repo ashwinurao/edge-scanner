@@ -228,7 +228,7 @@ while dragging to turn off snapping.
 | Window | What it shows |
 |---|---|
 | **Scanner** | The live alert stream. Each window has its own filters: setups, direction, minimum score and symbols. Column picker, row tint, and a sound or text-to-speech per window. **Hold** freezes the list while you read it; new alerts are still collected and sound, the button counts them (Resume +3), and Resume shows them |
-| **Chart** | Intraday and daily candles with extended hours, VWAP (plus a dashed premarket VWAP, 04:00-09:29 ET, when extended hours are shown; display only, the engine's VWAP starts at 09:30), EMAs, daily SMAs, prior-day and premarket levels |
+| **Chart** | Intraday and daily candles with extended hours, VWAP (plus a dashed premarket VWAP, 04:00-09:29 ET, when extended hours are shown; display only, the engine's VWAP starts at 09:30), EMAs, daily SMAs, prior-day and premarket levels. On intraday frames (1m to 1H) premarket and after-hours bars sit on a darker band (a bar counts by its start time: before 09:30 or from 16:00 ET), and a dashed vertical line marks the first bar of each new ET day |
 | **Rankings** | Ranked lists: RVOL leaders, gainers and losers (from the close or the open), 5-minute movers, premarket gainers, losers and volume, and a new high / low of day stream |
 | **News** | Market-wide news, or news for the linked symbol |
 | **Stock Info** | Live per-symbol state plus fundamentals |

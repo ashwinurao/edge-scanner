@@ -58,6 +58,7 @@ CI runs these on every pull request, and they must pass:
 python -m pytest
 npm --prefix dashboard-v2 run lint
 npm --prefix dashboard-v2 run build
+npm --prefix dashboard-v2 test   # fork: dashboard unit tests, node's own runner (dashboard-v2/tests)
 ```
 
 What to add:
