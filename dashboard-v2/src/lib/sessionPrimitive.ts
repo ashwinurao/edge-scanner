@@ -5,15 +5,15 @@ import type {
 import type { SessionMarks } from './sessionMarks'
 
 type Target = Parameters<ISeriesPrimitivePaneRenderer['draw']>[0]
-export interface SessionColors { ext: string; dayLine: string }
+export interface SessionColors { rth: string; dayLine: string }
 
-/** Draws the shaded extended-hours bands and the dashed day lines behind the
+/** Draws the shaded regular-hours bands and the dashed day lines behind the
  *  candles of an intraday chart. Display only: nothing here feeds the engine.
  *  Bar indexes are the chart's logical indexes, so the candle series must hold
  *  every bar the marks were built from (ChartWindow.tsx sets both from visibleBars). */
 export class SessionPrimitive implements ISeriesPrimitive<Time> {
   private param: SeriesAttachedParameter<Time> | null = null
-  private marks: SessionMarks = { extRuns: [], dayStarts: [] }
+  private marks: SessionMarks = { rthRuns: [], dayStarts: [] }
   private colors: SessionColors
   private readonly view: ISeriesPrimitivePaneView
 
@@ -51,11 +51,11 @@ export class SessionPrimitive implements ISeriesPrimitive<Time> {
     const x1 = ts.logicalToCoordinate(1 as Logical)
     if (x0 == null || x1 == null) return
     const edge = (i: number) => x0 + (i - 0.5) * (x1 - x0)
-    const { extRuns, dayStarts } = this.marks
-    const { ext, dayLine } = this.colors
+    const { rthRuns, dayStarts } = this.marks
+    const { rth, dayLine } = this.colors
     target.useBitmapCoordinateSpace(({ context: ctx, bitmapSize, horizontalPixelRatio: hpr, verticalPixelRatio: vpr }) => {
-      ctx.fillStyle = ext
-      for (const [a, b] of extRuns) {
+      ctx.fillStyle = rth
+      for (const [a, b] of rthRuns) {
         const from = edge(a), to = edge(b + 1)
         if (to < 0 || from > bitmapSize.width / hpr) continue
         const left = Math.round(from * hpr)

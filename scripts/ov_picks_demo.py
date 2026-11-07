@@ -21,7 +21,7 @@ demo port 7787 by default, and makes no network call.
 --demo-market adds a linked chart and a linked news window, fed with made-up bars and
 headlines (every headline says "Demo"), so a click on a past day's ticker can be seen
 end to end (the calendar, Ash, 2026-11-07). Intraday bars run 04:00-20:00 ET, so the EXT
-toggle and the shaded extended hours show too. It also makes up each row's 09:30 ET bar
+toggle and the lighter extended hours show too. It also makes up each row's 09:30 ET bar
 from the row's levels, so the columns that fill after the open (scanner/ov_picks_live.py)
 show values and tones. Without it the demo has no data feed and those cells stay blank.
 
@@ -86,7 +86,7 @@ def _screen(market: bool = False) -> dict:
 
 # ---------------------------------------------------------------- --demo-market: made-up data
 
-# Intraday bars run 04:00-20:00 ET like Alpaca's, so the EXT toggle and the shaded
+# Intraday bars run 04:00-20:00 ET like Alpaca's, so the EXT toggle and the lighter
 # extended hours have something to show; outside 09:30-16:00 they move and trade less.
 _ET_OPEN, _ET_CLOSE = (9, 30), (16, 0)
 _ET_FIRST, _ET_LAST = (4, 0), (20, 0)
