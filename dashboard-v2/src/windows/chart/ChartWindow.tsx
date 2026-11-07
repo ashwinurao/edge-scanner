@@ -9,7 +9,7 @@ import { toSecET, isExtended, etDate } from '../../lib/time'
 import { calcEMA, calcSMA, pmHighLow, priorDayHL, type Pt } from '../../lib/chartMath'
 import { calcPremarketVWAP } from '../../lib/pmVwap'
 import { readChartPalette, THEME_EVENT, type ChartPalette } from '../../lib/theme'
-import { useLinkedSymbol, useLinkedAlert, linkSymbol } from '../../stores/linkStore'
+import { useLinkedSymbol, useLinkedAlert, useLinkedDay, linkSymbol } from '../../stores/linkStore'
 import { useSetups } from '../../stores/setupsStore'
 import { useScreens } from '../../stores/screensStore'
 import { CompanyLogo, Empty, Field, SymbolInput, Toggle } from '../../components/primitives'
@@ -70,7 +70,11 @@ const ts = (t: string) => toSecET(t) as UTCTimestamp
 
 export function ChartWindow({ win }: { win: ChartConfig }) {
   const symbol = useLinkedSymbol(win, win.symbol)
-  const selAlert = useLinkedAlert(win, symbol)
+  // fork: a past day sent from the OV picks window: the bars end on that day (Ash, 2026-11-07).
+  const day = useLinkedDay(win)
+  // A scanner alert is today's, so a past day's chart does not mark it.
+  const linkedAlert = useLinkedAlert(win, symbol)
+  const selAlert = day ? null : linkedAlert
   const hostRef = useRef<HTMLDivElement>(null)
   const refs = useRef<Refs | null>(null)
   const fitKeyRef = useRef<string>('')
@@ -80,21 +84,22 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
   const fund = useFundamentals(symbol)
   const tf: ChartTimeframe = TFS.includes(win.timeframe) ? win.timeframe : '5m'
   const session = SESSION_TFS.includes(tf)          // VWAP / EXT / PD / PM make sense
-  const pollMs = session ? 30_000 : 120_000
+  // A past day's bars do not change: read them again only now and then.
+  const pollMs = day ? 600_000 : session ? 30_000 : 120_000
 
   // Every response carries the symbol and frame it was fetched for. usePoll keeps
   // its last result when the symbol changes, so without the key a slow fetch left
   // the old stock's candles under the new stock's name. Only a matching response
   // is drawn; until it arrives the chart is empty and says it is loading.
-  const dataKey = `${symbol}|${tf}`
+  const dataKey = `${symbol}|${tf}|${day ?? ''}`
   const { data: resp } = usePoll(
     async (): Promise<{ key: string; bars: Bar[]; error: string | null }> => {
-      const key = `${symbol}|${tf}`
+      const key = `${symbol}|${tf}|${day ?? ''}`
       if (!symbol) return { key, bars: [], error: null }
-      try { return { key, bars: await api.bars(symbol, TF_API[tf]), error: null } }
+      try { return { key, bars: await api.bars(symbol, TF_API[tf], day), error: null } }
       catch (e) { return { key, bars: [], error: e instanceof Error ? e.message : String(e) } }
     },
-    pollMs, !!symbol, [symbol, tf],
+    pollMs, !!symbol, [symbol, tf, day],
   )
   const current = resp?.key === dataKey ? resp : null
   const bars = current?.bars ?? null
@@ -237,7 +242,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     // bars after an empty state). Refreshes and overlay toggles must keep the
     // user's zoom and scroll position. Session frames open on the latest
     // session (the earlier days are there for the moving averages; scroll left).
-    const fitKey = `${symbol}|${tf}|${win.extended}`
+    const fitKey = `${symbol}|${tf}|${win.extended}|${day ?? ''}`
     if (visibleBars.length && (fitKeyRef.current !== fitKey || !hadDataRef.current)) {
       const n = visibleBars.length
       const lastDay = etDate(visibleBars[n - 1].t)
@@ -248,7 +253,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       fitKeyRef.current = fitKey
     }
     hadDataRef.current = visibleBars.length > 0
-  }, [visibleBars, bars, daily, win.overlays, session, symbol, tf, win.extended, selAlert])
+  }, [visibleBars, bars, daily, win.overlays, session, symbol, tf, win.extended, selAlert, day])
 
   const set = (patch: Partial<ChartConfig>) => useScreens.getState().updateWindow(win.id, patch)
   const toggleOverlay = (k: keyof ChartOverlays) => set({ overlays: { ...win.overlays, [k]: !win.overlays[k] } })
@@ -259,6 +264,12 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       <div className="wf-toolbar wf-nodrag">
         {symbol && <CompanyLogo symbol={symbol} website={fund?.website} />}
         <SymbolInput value={symbol} small onCommit={s => linkSymbol(win, s)} />
+        {day && symbol && (
+          <button className="chip on chart-pastday" onClick={() => linkSymbol(win, symbol)}
+            title={`These bars end on ${day}, the day picked in the OV picks window. Click to show ${symbol} live again.`}>
+            {day}, not live ✕
+          </button>
+        )}
         <div className="chart-tf">
           {TFS.map(t => <button key={t} className={tf === t ? 'on' : ''} onClick={() => set({ timeframe: t })}>{t}</button>)}
         </div>
@@ -277,7 +288,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
         {!symbol && <div style={{ position: 'absolute', inset: 0 }}><Empty title="No symbol">Pick a link color or type a symbol.</Empty></div>}
         {symbol && !current && <div className="chart-loading pulse">Loading {symbol} {tf}…</div>}
         {symbol && error && <div style={{ position: 'absolute', top: 6, left: 8 }} className="down">{error}</div>}
-        {symbol && bars && bars.length === 0 && !error && <div style={{ position: 'absolute', inset: 0 }}><Empty title={`No ${tf} bars for ${symbol}`}>{session ? 'Before 04:00 ET there is nothing to draw yet.' : 'Symbol may not have history for this frame.'}</Empty></div>}
+        {symbol && bars && bars.length === 0 && !error && <div style={{ position: 'absolute', inset: 0 }}><Empty title={`No ${tf} bars for ${symbol}${day ? ` up to ${day}` : ''}`}>{day ? 'The symbol may not have traded then. Pick another day, or click the day chip to go back to live.' : session ? 'Before 04:00 ET there is nothing to draw yet.' : 'Symbol may not have history for this frame.'}</Empty></div>}
       </div>
     </div>
   )

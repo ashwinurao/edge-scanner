@@ -16,6 +16,8 @@ out/                          the module's output folder (mounted read-only into
     picks.json                frozen at 09:25:00 ET, written once
     settled.json              the 09:26 ET re-check, written once
     parity.json               the 10:35 ET comparison with OV, written once
+  history/                    OV's own past days, before the module ran, exported by hand
+    2026-11-04.json           one day's ranked list, named YYYY-MM-DD.json
 ```
 
 - Only the module's runner writes `out/`. Edge Scanner reads it and never writes it.
@@ -30,6 +32,11 @@ out/                          the module's output folder (mounted read-only into
   day has a `picks.json`, so the last preview before the freeze stays as it was. A preview
   is never the day's picks: Edge Scanner shows it only before 09:25 ET, and the watchlist
   and the day's notice come from `picks.json` only.
+- `history/` (`HISTORY_DIR`) holds OV's own past days, one file per ET trading day,
+  named `YYYY-MM-DD.json` (`HISTORY_SUFFIX`). The module exports them by hand, once; an
+  export replaces a day's file atomically. The writer refuses a day the module froze its
+  own `picks.json` for: those are the day's list. Edge Scanner shows a history day only
+  when it is asked for a past day without module picks.
 - `status.json` (`STATUS_FILE`) is rewritten atomically each time a job records a state.
   It assumes one writer process at a time. Two processes writing it at once can lose one
   entry until that job writes again.
@@ -126,6 +133,34 @@ metric labels and earnings labels follow the same rules.
 never raises on a missing, unreadable or invalid file: `has_preview` is false, and
 `reason_code` (`MISSING`, `UNREADABLE` or `INVALID`) and `reason` say why. It raises
 `ValueError` only for a `trading_date` that is not a date.
+
+## History file: `history/YYYY-MM-DD.json`
+
+`kind` is `ov_picks_history` (`KIND_HISTORY`). The owner's calendar of past days (Ash,
+project thread, 2026-11-07): Edge Scanner's OV picks window can show a past day, and before
+the module ran those days come from OV itself. A history file has the picks file's ranked
+list, with the same rows, metrics and details, and where it comes from.
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `schema_version` | whole number | `1` |
+| `kind` | text | `ov_picks_history` |
+| `trading_date` | date | The ET trading day; equals the file name. Never a Saturday or Sunday. |
+| `source` | text | Where the ranked list comes from: `ov_rebuild` (`HISTORY_OV_REBUILD`), OV's 2026 rebuild, OV's current code and config run again on clean bars; or `ov_live` (`HISTORY_OV_LIVE`), OV's own live 09:25 ET scan that morning. |
+| `exported_at` | time | When the module wrote the file. Its ET date is after `trading_date`: a history file holds a past day. |
+| `earnings_status` | text | OV's earnings data status that day, verbatim, as in the picks file. |
+| `metric_labels` | list of text | As in the picks file. |
+| `picks` | list | That day's ranked list, rows as in the picks file. Empty when no name passed OV's gates. |
+
+The rules between fields are the picks file's: the rows' ranks, tickers, `top` rows,
+metric labels and earnings labels follow the same rules.
+
+`read_history(out_dir, trading_date)` returns `has_history`, `reason_code`, `reason`,
+`warnings`, `schema_version`, and the fields above but `kind` (`HISTORY_VIEW_FIELDS`). It
+never raises on a missing, unreadable or invalid file: `has_history` is false, and
+`reason_code` (`MISSING`, `UNREADABLE` or `INVALID`) and `reason` say why. It raises
+`ValueError` only for a `trading_date` that is not a date. `history_days(out_dir)` lists
+the days `history/` has a file for, oldest first, from the file names alone.
 
 ## Settled record: `settled.json`
 
@@ -236,7 +271,8 @@ bad entry is left out with a warning, and the other entries still read.
 - A new version only adds fields or values. It never changes what an existing field
   means. Version 1 gained the preview file and the `preview` job without a new version:
   no existing record changed, and a reader that predates them keeps the `preview` status
-  entry as written. A version that adds a field older files lack adds an upgrade step to
+  entry as written. It gained the history file the same way: a reader that predates it
+  never opens `history/`. A version that adds a field older files lack adds an upgrade step to
   `_UPGRADES` in `ov_picks/contract.py`, so saved days keep loading (spec US67;
   CONTRIBUTING.md "Saved work survives").
 
@@ -261,4 +297,5 @@ passes the writer's checks and reads as described.
 | `settled_diff` | The 09:26 re-check found a different rank 4: `SETTLED_DIFF`; the frozen picks stand. |
 | `older_schema` | A schema version 1 picks file, no status file. Never edit it once version 1 has shipped. When `SCHEMA_VERSION` goes above 1, it is the older-version sample, and the test reads it with the newer reader. |
 | `warming` | 08:50 ET: `status.json` says `WARMING`, and there is no picks file yet. |
+| `past_days` | The `shadow` sample's day, plus OV's past days in `history/`: 2026-11-03 from `ov_rebuild` and 2026-11-04 from `ov_live`, 6 rows each, the first 4 marked `top`. |
 | `preview` | 09:14 ET in the shadow run: `status.json` says the warmup is `DATA_READY` and the preview job `PREVIEWED`; `preview.json` is as of 09:14 ET with 6 rows, the first 4 marked `top`. No picks file yet. |

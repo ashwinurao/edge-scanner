@@ -7,16 +7,19 @@
 // like a watchlist row. From 09:00 to 09:25 ET, before the freeze, it shows the module's
 // preview instead: the same ranked list as of the latest minute, marked not frozen
 // (Ash, 2026-11-06). The watchlist sync runs for the frozen picks only.
+// A calendar shows a past day (Ash, 2026-11-07): the module's own frozen picks for it, or,
+// before the module ran, OV's own list from the history files. A click on a ticker there
+// sends that day with it, so the linked charts and news show the stock as it was then.
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { usePoll } from '../../lib/usePoll'
 import { DASH } from '../../lib/format'
 import { linkSymbol } from '../../stores/linkStore'
 import { useWatchlists } from '../../stores/watchlistsStore'
 import { Empty } from '../../components/primitives'
-import type { OvEntry, OvPick, OvPicksAnswer, OvPicksConfig, OvPicksPreview } from './types'
-import { fetchOvPicks, syncOvPicksWatchlist, watchlistHas } from './api'
-import { OV_PICKS_POLL_MS, OV_PICKS_WATCHLIST_ID } from './defaults'
-import { allWarnings, badges, dayLabel, dayNotes, fmtValue, metricValue, noPicks, previewBadges, previewNotes, routeProblem, topPicks, wholeColumn, whenET, type Note } from './view'
+import type { OvEntry, OvPick, OvPicksAnswer, OvPicksConfig, OvPicksHistory, OvPicksPreview } from './types'
+import { fetchOvPicks, fetchOvPicksDays, syncOvPicksWatchlist, watchlistHas } from './api'
+import { OV_PICKS_DAYS_POLL_MS, OV_PICKS_PAST_POLL_MS, OV_PICKS_POLL_MS, OV_PICKS_WATCHLIST_ID } from './defaults'
+import { allWarnings, badges, dayLabel, dayNotes, fmtValue, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, topPicks, wholeColumn, whenET, type Note } from './view'
 import './ovpicks.css'
 
 // After the card first sees the day's picks, the scanner's watcher can take a few seconds
@@ -69,10 +72,12 @@ interface TableProps {
   toggle: (ticker: string) => void
   /** the "top" badge's title */
   topTitle: string
+  /** a past day: a ticker click sends it to the linked windows; null for today */
+  linkDay: string | null
 }
 
-/** The ranked list: the frozen picks, or a preview of them. */
-function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, topTitle }: TableProps) {
+/** The ranked list: the frozen picks, a preview of them, or a past day's list. */
+function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, topTitle, linkDay }: TableProps) {
   // A column of numbers is right-aligned, header included.
   const numeric = labels.map(l => picks.some(p => typeof metricValue(p, l) === 'number'))
   const whole = labels.map(l => wholeColumn(picks, l))
@@ -101,7 +106,7 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, topTi
               <tr className={cls} tabIndex={0} aria-expanded={isOpen} onClick={() => toggle(p.ticker)} onKeyDown={e => onRowKey(e, p.ticker)} title={isOpen ? 'Click to close the details' : 'Click for the full row'}>
                 <td className="ovp-tk">
                   <span className="ovp-chev" aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
-                  <button className="ovp-sym sym" onClick={e => { e.stopPropagation(); linkSymbol(win, p.ticker, null) }} title={`Show ${p.ticker} in this window's linked charts`}>{p.ticker}</button>
+                  <button className="ovp-sym sym" onClick={e => { e.stopPropagation(); linkSymbol(win, p.ticker, null, linkDay) }} title={linkDay ? `Show ${p.ticker} on ${linkDay} in this window's linked charts and news` : `Show ${p.ticker} in this window's linked charts`}>{p.ticker}</button>
                   {p.top && <span className="badge ovp-b-ok ovp-tag" title={topTitle}>top</span>}
                   {p.earnings_label && <span className="badge ovp-b-info ovp-tag" title="Earnings label">{p.earnings_label}</span>}
                   {outside && <span className="badge ovp-b-warn ovp-tag" title="Not in the scanner's universe: no live bars and no setups. Charts still work.">no setups</span>}
@@ -121,17 +126,57 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, topTi
   )
 }
 
+interface DayNavProps {
+  /** the day the card shows */
+  shown: string
+  today: string
+  /** the days with a list, oldest first */
+  days: string[]
+  /** null: today's view */
+  picked: string | null
+  daysError: string | null
+  go: (day: string | null) => void
+}
+
+/** The calendar: the previous and next days with a list, any day by date, and back to today. */
+function DayNav({ shown, today, days, picked, daysError, go }: DayNavProps) {
+  const prev = [...days].reverse().find(d => d < shown) ?? null
+  const next = days.find(d => d > shown) ?? null
+  const why = daysError ? ` The list of days could not be read: ${daysError}` : ''
+  return (
+    <span className="ovp-nav">
+      <button className="btn sm" onClick={() => go(prev)} disabled={!prev} aria-label="Previous day with a list"
+        title={prev ? `Show ${dayLabel(prev)}` : `No earlier day with a list.${why}`}>‹</button>
+      <input type="date" className="input sm mono ovp-date" aria-label="Pick a day" value={shown} min={days[0]} max={today || undefined}
+        onChange={e => { if (e.target.value) go(e.target.value) }}
+        title={`Pick a day to show its list. Days with a list: ${days.length ? `${days[0]} to ${days[days.length - 1]}` : 'none yet'}.${why}`} />
+      <button className="btn sm" onClick={() => go(next)} disabled={!picked} aria-label="Next day with a list"
+        title={picked ? (next && next < today ? `Show ${dayLabel(next)}` : 'Back to today') : 'This is today'}>›</button>
+      {picked && <button className="btn sm" onClick={() => go(null)} title="Back to today's live picks">Today</button>}
+    </span>
+  )
+}
+
 export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
-  const { data, error, loading, refresh } = usePoll(fetchOvPicks, OV_PICKS_POLL_MS)
+  // The calendar's day: null is today, live; YYYY-MM-DD is a past day. Not saved: a
+  // reload opens on today.
+  const [picked, setPicked] = useState<string | null>(null)
+  const { data: answer, error, loading, refresh } = usePoll(() => fetchOvPicks(picked), picked ? OV_PICKS_PAST_POLL_MS : OV_PICKS_POLL_MS, true, [picked])
+  const { data: daysAnswer, error: daysError } = usePoll(fetchOvPicksDays, OV_PICKS_DAYS_POLL_MS)
+  // usePoll keeps the last answer while the next one loads: show only the answer for the
+  // day asked, so a slow reply never puts one day's list under another day's date.
+  const data = answer && (answer.asked_date ?? null) === picked ? answer : null
   const ovList = useWatchlists(s => s.lists[OV_PICKS_WATCHLIST_ID])
   const day = data?.day ?? null
+  const past = data ? isPastDay(data) : false
   // The watchlist holds the top picks only, like the scanner's morning upsert.
   const tickers = day?.has_picks ? topPicks(day).map(p => p.ticker) : []
   const picksKey = data?.is_today && day && tickers.length ? `${day.trading_date}|${day.frozen_at}|${tickers.join(',')}` : ''
   // The open row belongs to one frozen list; a new day's list opens with every row closed.
   // A preview keeps its open row from minute to minute, until the picks freeze.
   const preview: OvPicksPreview | null = day && !day.has_picks && data?.preview?.has_preview ? data.preview : null
-  const dayKey = preview ? `${preview.trading_date}|preview` : day ? `${day.trading_date}|${day.frozen_at}` : ''
+  const history: OvPicksHistory | null = day && !day.has_picks && data?.history?.has_history ? data.history : null
+  const dayKey = preview ? `${preview.trading_date}|preview` : history ? `${history.trading_date}|history` : day ? `${day.trading_date}|${day.frozen_at}` : ''
   const [open, setOpen] = useState<{ key: string; ticker: string } | null>(null)
   const openTicker = open?.key === dayKey ? open.ticker : null
   const toggle = (ticker: string) => setOpen(openTicker === ticker ? null : { key: dayKey, ticker })
@@ -150,17 +195,25 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
       .catch(() => { /* the next poll tries again */ })
   }, [picksKey, data])
 
+  const today = data?.today_et ?? answer?.today_et ?? daysAnswer?.today_et ?? ''
+  const shown = picked ?? data?.trading_date ?? today
+  // A day from today on is today's view; the route has nothing after today.
+  const go = (d: string | null) => setPicked(d && today && d < today ? d : null)
+  const nav = today
+    ? <DayNav shown={shown} today={today} days={daysAnswer?.days ?? []} picked={picked} daysError={daysError ?? (daysAnswer?.reason_code ? daysAnswer.reason : null)} go={go} />
+    : null
   const header = (extra?: ReactNode) => (
     <div className="ovp-top">
+      {nav}
       {extra}
       <span className="flex-spacer" />
-      <button className="btn sm" onClick={() => void refresh()} disabled={loading} title={`Read the picks again now (the card refreshes every ${OV_PICKS_POLL_MS / 1000} s)`}>{loading ? '…' : 'Refresh'}</button>
+      <button className="btn sm" onClick={() => void refresh()} disabled={loading} title={picked ? 'Read this day again now' : `Read the picks again now (the card refreshes every ${OV_PICKS_POLL_MS / 1000} s)`}>{loading ? '…' : 'Refresh'}</button>
     </div>
   )
 
   if (!data) {
-    if (error) return <div className="ovp-wrap">{header()}<Empty title="OV picks are not available">{error}</Empty></div>
-    return <div className="ovp-wrap">{header()}<Empty title="Reading OV picks…" /></div>
+    if (error && !loading) return <div className="ovp-wrap">{header()}<Empty title="OV picks are not available">{error}</Empty></div>
+    return <div className="ovp-wrap">{header()}<Empty title={picked ? `Reading ${dayLabel(picked)}…` : 'Reading OV picks…'} /></div>
   }
   const stale = error ? <div className="sc-stale">Refresh failed ({error}). Showing the answer from {whenET(data.now_et, data.today_et, true)}.</div> : null
 
@@ -186,7 +239,7 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
         <div className="ovp-scroll">
           {preview.picks.length > 0 && (
             <RankedTable win={win} labels={preview.metric_labels} picks={preview.picks} inUniverse={data.in_universe}
-              openTicker={openTicker} toggle={toggle} topTitle={`One of OV's top picks as of ${asOf || 'this preview'}: not frozen`} />
+              openTicker={openTicker} toggle={toggle} topTitle={`One of OV's top picks as of ${asOf || 'this preview'}: not frozen`} linkDay={null} />
           )}
           <Notes notes={previewNotes(data, preview)} />
           <Warnings a={data} />
@@ -200,11 +253,45 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
     )
   }
 
-  if (!day.has_picks) {
-    const { title, notes } = noPicks(data, day)
+  if (history) {
+    const top = history.picks.filter(p => p.top).length
     return (
       <div className="ovp-wrap">
-        {header(<span className="ovp-day">{dayLabel(day.trading_date)}</span>)}
+        {header(
+          <>
+            <span className="ovp-day">{dayLabel(history.trading_date)}</span>
+            <span className="faint ovp-count">{history.picks.length} ranked, {top} top</span>
+            {historyBadges(history).map(b => <span key={b.text} className={`badge ovp-b-${b.tone}`} title={b.title}>{b.text}</span>)}
+          </>,
+        )}
+        {stale}
+        <div className="ovp-scroll">
+          {history.picks.length > 0 && (
+            <RankedTable win={win} labels={history.metric_labels} picks={history.picks} inUniverse={null}
+              openTicker={openTicker} toggle={toggle} topTitle="One of OV's top picks that day" linkDay={history.trading_date} />
+          )}
+          <Notes notes={historyNotes(data, history)} />
+          <Warnings a={data} />
+          {history.picks.length > 0 && (
+            <div className="ovp-foot faint">
+              OV's own list for a past day. Highlighted rows are OV's top picks that day. Click a row for its full details. This card shows the list only: it places no orders and sizes nothing.
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (!day.has_picks) {
+    const { title, notes } = past ? noPastDay(data, day) : noPicks(data, day)
+    return (
+      <div className="ovp-wrap">
+        {header(
+          <>
+            <span className="ovp-day">{dayLabel(day.trading_date)}</span>
+            {past && <span className="badge ovp-b-info" title="Not today: a day picked in the calendar.">past day</span>}
+          </>,
+        )}
         {stale}
         <div className="ovp-scroll">
           <div className="ovp-title">{title}</div>
@@ -223,6 +310,7 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
           <span className="ovp-day">{dayLabel(day.trading_date)}</span>
           {day.frozen_at && <span className="faint mono ovp-frozen" title={day.frozen_at}>frozen {whenET(day.frozen_at, day.trading_date, true).replace(/^today /, '')}</span>}
           <span className="faint ovp-count">{day.picks.length} ranked, {tickers.length} top</span>
+          {past && <span className="badge ovp-b-info" title="Not today: a day picked in the calendar.">past day</span>}
           {badges(day).map(b => <span key={b.text} className={`badge ovp-b-${b.tone}`} title={b.title}>{b.text}</span>)}
         </>,
       )}
@@ -230,14 +318,15 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
       <div className="ovp-scroll">
         {day.picks.length > 0 && (
           <RankedTable win={win} labels={day.metric_labels} picks={day.picks} inUniverse={data.in_universe}
-            openTicker={openTicker} toggle={toggle} topTitle="One of OV's top picks today" />
+            openTicker={openTicker} toggle={toggle} topTitle={past ? 'One of OV\'s top picks that day' : 'One of OV\'s top picks today'}
+            linkDay={past ? day.trading_date : null} />
         )}
         <Notes notes={dayNotes(data, day)} />
         <Warnings a={data} />
         {day.picks.length > 0 && (
           <div className="ovp-foot faint">
             {data.is_today && inList ? 'The top picks are in the "OV picks" watchlist. ' : ''}
-            Highlighted rows are OV's top picks. Click a row for its full details. This card shows the list only: it places no orders and sizes nothing.
+            Highlighted rows are OV's top picks{past ? ' that day' : ''}. Click a row for its full details. This card shows the list only: it places no orders and sizes nothing.
           </div>
         )}
       </div>

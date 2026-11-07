@@ -15,13 +15,14 @@ import time
 from typing import TYPE_CHECKING, Optional
 
 import pandas as pd
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, Query, WebSocket  # fork: Query for /api/bars ?date
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from fastapi import Request as _Request
 
 from scanner import local_guard
+from scanner import past_day  # fork: OV picks past days
 from scanner.feed_hub import FeedHub, Subscription
 
 if TYPE_CHECKING:
@@ -51,8 +52,8 @@ class AppState:
         # every consumer subscribes to /ws/alerts with a filter. Created here so
         # the API and the sinks share one instance; run_live.py taps the sinks.
         self.hub: FeedHub = hub or FeedHub(keep_days=keep_days)
-        # bar_cache: (symbol, timeframe) -> (fetched_at, data_list)
-        self._bar_cache: dict[tuple[str, str], tuple[float, list]] = {}
+        # bar_cache: (symbol, timeframe, last day or None) -> (fetched_at, data_list)
+        self._bar_cache: dict[tuple, tuple[float, list]] = {}
         self._premarket_cache: tuple[float, dict] | None = None
 
 
@@ -226,13 +227,19 @@ def create_app(app_state: AppState) -> FastAPI:
     # ── REST: bars proxy ──────────────────────────────────────────────────────
 
     @app.get("/api/bars/{symbol}/{timeframe}")
-    async def get_bars(symbol: str, timeframe: str) -> JSONResponse:
+    async def get_bars(symbol: str, timeframe: str, on: str = Query("", alias="date")) -> JSONResponse:
         """Proxy Alpaca bars with a 60-second memory cache.
 
         timeframe: "5min" (today's intraday) or "1day" (historical daily)
+        date: optional YYYY-MM-DD; the bars end on that day (fork: OV picks past days,
+        scanner/past_day.py).
         """
         symbol = symbol.upper()
-        cache_key = (symbol, timeframe)
+        try:
+            last_day = past_day.parse_day(on, past_day.today_et())
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        cache_key = (symbol, timeframe, last_day)
         now = time.monotonic()
 
         cached = app_state._bar_cache.get(cache_key)
@@ -248,19 +255,19 @@ def create_app(app_state: AppState) -> FastAPI:
                          "30min": ("30Min", 45), "1hour": ("1Hour", 90), "4hour": ("4Hour", 200)}
             if timeframe in _RANGE_TF:
                 _tf, _days = _RANGE_TF[timeframe]
-                end   = date.today()
+                end   = last_day or date.today()
                 start = end - timedelta(days=_days)
                 df = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: app_state.feed.get_bars_range(symbol, _tf, start, end)
                 )
             elif timeframe == "1day":
-                end   = date.today()
+                end   = last_day or date.today()
                 start = end - timedelta(days=600)   # ~410 sessions: enough for a daily SMA200 series
                 df = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: app_state.feed.get_bars_range(symbol, "Day", start, end)
                 )
             elif timeframe == "1week":
-                end   = date.today()
+                end   = last_day or date.today()
                 start = end - timedelta(days=1095)  # ~3 years
                 df = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: app_state.feed.get_bars_range(symbol, "1Week", start, end)
@@ -269,6 +276,9 @@ def create_app(app_state: AppState) -> FastAPI:
                 return JSONResponse({"error": f"unknown timeframe: {timeframe}"}, status_code=400)
 
             bars = _df_to_bars(df)
+            # fork: past days add keys, so drop expired entries instead of keeping them all.
+            for k in [k for k, (t, _) in app_state._bar_cache.items() if now - t >= _BAR_CACHE_TTL]:
+                del app_state._bar_cache[k]
             app_state._bar_cache[cache_key] = (now, bars)
             return JSONResponse({"bars": bars})
 

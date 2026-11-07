@@ -266,6 +266,17 @@ scanner shows the day's picks. It never writes that folder.
   why they rank there (the owner's request, 2026-11-06). The watchlist and the notice still come
   from the frozen 09:25 picks only.
   [USER_GUIDE: The OV picks window](USER_GUIDE.md#the-ov-picks-window) explains every part of it.
+- **Past days** (the owner's request, 2026-11-07). The window has a calendar: ‹ and › step
+  through the days that have a list, a date box picks any day, and **Today** goes back to the
+  live list. A past day shows the module's own frozen picks for it, or, for a day before the
+  module ran, OV's own list from the module's history files (`history/YYYY-MM-DD.json`, written
+  once by the module's `history` job), labelled "OV 2026 rebuild" or "OV live scan". A click on
+  a ticker there sends the ticker and that day to the window's linked charts and news: charts
+  end on that day and news covers the 3 days up to its 16:00 ET close. Any other click puts
+  them back on live. The routes take an optional `?date=YYYY-MM-DD`: `GET /api/v2/ov-picks`,
+  `GET /api/bars/{symbol}/{timeframe}` and `GET /api/v2/news` (`scanner/past_day.py`);
+  `GET /api/v2/ov-picks/days` lists the days. Without `date` every route is unchanged. Past
+  days use the same Alpaca calls with an earlier end; there is no new source.
 - A name outside the scanner's universe gets no live bars and no setups. The universe is built at
   startup and a watchlist does not add to it, so the window marks that name "no setups".
 - Each trading morning, when the picks freeze, the scanner fills a watchlist called "OV picks"
@@ -276,7 +287,8 @@ scanner shows the day's picks. It never writes that folder.
 - Without `OV_PICKS_DIR` (when the scanner starts) none of this runs, and the window says so.
   `python scripts/ov_picks_demo.py --sample frozen` shows the window on a sample day, on
   127.0.0.1:7787, without keys or market data (`--sample preview --at "2026-11-05 09:14:30"` for
-  a preview).
+  a preview; `--sample past_days --at "2026-11-05 10:40" --demo-market` for the calendar, with a
+  linked chart and news window on made-up data).
 
 **The module on a home server.** The module runs as the `ov-picks` service in `compose.yaml`.
 Compose builds its image from a local clone of the private repo. The service is off unless

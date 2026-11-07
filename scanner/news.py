@@ -13,6 +13,10 @@ A quiet symbol often has nothing inside the window, so a symbol query that
 comes back empty is retried once over FALLBACK_HOURS and the payload carries
 `widened_hours` so the UI can say so.
 
+The window ends now, or at `until` for a past day (fork: the OV picks window's
+past days, scanner/past_day.py). Then the wire is asked for that span, and RSS
+items outside it are dropped.
+
 Results are cached per query for `ttl` seconds and the client fails open: if
 every source fails the caller gets the last good payload (marked
 `stale: True`) or an empty item list with the error string, never an
@@ -171,11 +175,13 @@ class NewsClient:
     def configured(self) -> bool:
         return bool(self._headers["APCA-API-KEY-ID"] and self._headers["APCA-API-SECRET-KEY"])
 
-    def fetch(self, symbols: Optional[list[str]] = None, limit: int = 50, hours: int = 24) -> dict:
+    def fetch(self, symbols: Optional[list[str]] = None, limit: int = 50, hours: int = 24,
+              until: Optional[datetime] = None) -> dict:
+        """News from the `hours` before `until` (an aware datetime; None means now)."""
         syms = tuple(sorted({s.strip().upper() for s in (symbols or []) if s and s.strip()}))
         limit = max(1, min(int(limit), 50))
         hours = max(1, int(hours))
-        key = (syms, limit, hours)
+        key = (syms, limit, hours, until)
         now = time.monotonic()
 
         with self._lock:
@@ -184,10 +190,10 @@ class NewsClient:
                 return hit[1]
 
         fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        items, errors, answered = self._gather(syms, limit, hours)
+        items, errors, answered = self._gather(syms, limit, hours, until)
         widened = None
         if syms and not items and answered and hours < FALLBACK_HOURS:
-            items, _, _ = self._gather(syms, limit, FALLBACK_HOURS)
+            items, _, _ = self._gather(syms, limit, FALLBACK_HOURS, until)
             widened = FALLBACK_HOURS if items else None
 
         if not answered:
@@ -206,16 +212,17 @@ class NewsClient:
             self._cache[key] = (now, result)
         return result
 
-    def _gather(self, syms: tuple, limit: int, hours: int) -> tuple[list[dict], list[str], bool]:
+    def _gather(self, syms: tuple, limit: int, hours: int,
+                until: Optional[datetime] = None) -> tuple[list[dict], list[str], bool]:
         """Every source for one window: (items, errors, did any source answer)."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = (until or datetime.now(timezone.utc)) - timedelta(hours=hours)
         jobs: list[Callable[[], list[dict]]] = []
         if self.configured:
-            jobs.append(lambda: self._fetch_wire(syms, limit, cutoff))
+            jobs.append(lambda: self._fetch_wire(syms, limit, cutoff, until))
         if self._rss_get is not None:
             for sym in syms[:_RSS_MAX_SYMBOLS]:
                 for name in self._rss_sources:
-                    jobs.append(lambda sym=sym, name=name: self._fetch_rss(name, sym, cutoff))
+                    jobs.append(lambda sym=sym, name=name: self._fetch_rss(name, sym, cutoff, until))
         if not jobs:
             return [], [], False
 
@@ -244,14 +251,17 @@ class NewsClient:
         merged.sort(key=lambda it: _epoch(it["created_at"]), reverse=True)
         return merged[:limit], errors, len(errors) < len(jobs)
 
-    def _fetch_wire(self, syms: tuple, limit: int, cutoff: datetime) -> list[dict]:
+    def _fetch_wire(self, syms: tuple, limit: int, cutoff: datetime,
+                    until: Optional[datetime] = None) -> list[dict]:
         params: dict = {
             "limit": limit,
             "exclude_contentless": "true",
             "include_content": "true",
             "sort": "desc",
-            "start": cutoff.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "start": _utc_text(cutoff),
         }
+        if until is not None:
+            params["end"] = _utc_text(until)
         if syms:
             params["symbols"] = ",".join(syms)
         resp = self._get(NEWS_URL, headers=self._headers, params=params, timeout=self._timeout)
@@ -261,11 +271,21 @@ class NewsClient:
         body = resp.json() or {}
         return [it for it in (parse_item(a) for a in body.get("news", []) if isinstance(a, dict)) if it]
 
-    def _fetch_rss(self, name: str, symbol: str, cutoff: datetime) -> list[dict]:
+    def _fetch_rss(self, name: str, symbol: str, cutoff: datetime,
+                   until: Optional[datetime] = None) -> list[dict]:
         label, template = RSS_FEEDS[name]
         resp = self._rss_get(template.format(symbol=symbol), headers=_RSS_HEADERS, params={}, timeout=self._timeout)
         status = getattr(resp, "status_code", 200)
         if status != 200:
             raise RuntimeError(f"{name} HTTP {status}")
         floor = cutoff.timestamp()
-        return [it for it in parse_rss(resp.text, symbol, label) if _epoch(it["created_at"]) >= floor]
+        # A feed has only its latest items and no end parameter: cut the newer ones here.
+        ceiling = until.timestamp() if until is not None else float("inf")
+        return [it for it in parse_rss(resp.text, symbol, label) if floor <= _epoch(it["created_at"]) <= ceiling]
+
+
+def _utc_text(dt: datetime) -> str:
+    # The wire wants RFC 3339 in UTC; a naive time is taken as UTC, as before.
+    if dt.utcoffset() is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")

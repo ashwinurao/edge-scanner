@@ -8,6 +8,10 @@
 .ovp-title { padding: 10px 10px 4px; font-size: 12.5px; font-weight: 600; color: var(--text-dim); }
 
 .ovp-count { font-size: 11px; }
+/* The calendar (Ash, 2026-11-07): previous day, a date, next day, back to today. */
+.ovp-nav { display: inline-flex; align-items: center; gap: 3px; }
+.ovp-nav .btn.sm { min-width: 22px; padding: 0 6px; }
+.ovp-date { width: 124px; }
 
 /* The ranked list. Cells carry an opaque background so the sticky ticker column covers
    what scrolls under it. */

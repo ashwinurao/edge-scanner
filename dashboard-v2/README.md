@@ -37,14 +37,14 @@ Other scripts: `npm run lint` (ESLint), `npm run preview` (serve the built bundl
 | Window | Data | Notes |
 |---|---|---|
 | Scanner | unified alert feed `ws://<host>:7777/ws/alerts` | per-window source, setup, direction, score and symbol filters; column picker; resizable columns; row tint; sound and text-to-speech |
-| Chart | `/api/bars` | intraday and daily timeframes, extended hours, VWAP and premarket VWAP (`src/lib/pmVwap.ts`), EMAs, daily SMAs, prior-day and premarket levels |
+| Chart | `/api/bars` | intraday and daily timeframes, extended hours, VWAP and premarket VWAP (`src/lib/pmVwap.ts`), EMAs, daily SMAs, prior-day and premarket levels; ends on a past day sent from the OV picks window (`?date=`, fork) |
 | Rankings | `/api/v2/toplists`, `/api/premarket`, `/api/v2/events` | RVOL leaders, gainers and losers, 5-min movers, premarket lists, new HOD / LOD stream |
-| News | `/api/v2/news` | market-wide or following the linked symbol |
+| News | `/api/v2/news` | market-wide or following the linked symbol; up to a past day's 16:00 ET close when the OV picks window sends one (`?date=`, fork) |
 | Stock Info | `/api/v2/state`, `/api/v2/fundamentals` | live per-symbol state plus fundamentals |
 | Watchlist | `/api/v2/watchlists`, `/api/v2/snapshot` | editable lists with live columns |
 | Clock | `/api/v2/clock` | ET clock, session phase, market regime, SPY, feed health |
 | Setup check | `/api/v2/check/{symbol}` | what every setup did on one symbol in the last few minutes, and why |
-| OV picks | `/api/v2/ov-picks`, `/api/v2/watchlists` | fork window (`src/windows/ovpicks/`): the OV picks module's 09:25 ET picks, and its every-minute preview from 09:00 ET before they freeze, display only |
+| OV picks | `/api/v2/ov-picks`, `/api/v2/ov-picks/days`, `/api/v2/watchlists` | fork window (`src/windows/ovpicks/`): the OV picks module's 09:25 ET picks, and its every-minute preview from 09:00 ET before they freeze, display only; a calendar for past days, whose ticker clicks send the day to linked charts and news (`src/stores/linkStore.ts` `days`) |
 
 ## Alert sources
 

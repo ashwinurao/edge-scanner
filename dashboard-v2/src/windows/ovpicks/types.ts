@@ -83,6 +83,35 @@ export interface OvPicksPreview {
   picks: OvPick[]
 }
 
+/** OV's own ranked list for a past day before the module ran (ov_picks/CONTRACT.md,
+ *  "History file"; Ash, 2026-11-07). Rows as in the picks file. */
+export interface OvPicksHistory {
+  has_history: boolean
+  /** '' with a history file; MISSING | UNREADABLE | INVALID without */
+  reason_code: string
+  reason: string
+  warnings: string[]
+  schema_version: number | null
+  trading_date: string
+  /** ov_rebuild: OV's 2026 rebuild; ov_live: OV's own live 09:25 ET scan. Another value is shown as written. */
+  source: string | null
+  /** UTC: when the module exported it */
+  exported_at: string | null
+  earnings_status: string | null
+  metric_labels: string[]
+  picks: OvPick[]
+}
+
+/** GET /api/v2/ov-picks/days: the days the calendar can show. */
+export interface OvPicksDays {
+  set_up: boolean
+  reason_code: string
+  reason: string
+  today_et: string
+  /** YYYY-MM-DD, oldest first: days with the module's picks or OV's history, up to today */
+  days: string[]
+}
+
 export interface OvJobEntry {
   state: string
   at: string
@@ -101,11 +130,13 @@ export interface OvPicksStatus {
 
 export interface OvPicksAnswer {
   set_up: boolean
-  /** '' when the folder was read; NOT_SET_UP | NO_READER | NO_FOLDER | ERROR otherwise */
+  /** '' when the folder was read; NOT_SET_UP | NO_READER | NO_FOLDER | BAD_DATE | ERROR otherwise */
   reason_code: string
   reason: string
   now_et: string
   today_et: string
+  /** the ?date this answers, as sent; null for today's answer */
+  asked_date: string | null
   trading_date: string | null
   is_today: boolean
   /** null: the route can't tell (it has no holiday calendar) */
@@ -117,8 +148,11 @@ export interface OvPicksAnswer {
   status: OvPicksStatus | null
   /** today's preview, from 09:00 to 09:25 ET before the picks freeze; null otherwise */
   preview: OvPicksPreview | null
+  /** a past day without the module's picks: OV's own list for it, or why there is none;
+   *  null for today and for a past day with the module's picks */
+  history: OvPicksHistory | null
   /** ticker of each row (the preview's, without picks) -> scanned by this scanner; null when
-   *  there are no rows or it can't tell */
+   *  there are no rows, it can't tell, or the day is a past day */
   in_universe: Record<string, boolean> | null
   warnings: string[]
 }

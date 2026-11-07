@@ -235,7 +235,7 @@ while dragging to turn off snapping.
 | **Watchlist** | Editable symbol lists with live columns |
 | **Clock** | Eastern time, session phase, market regime, SPY and feed health |
 | **Setup check** | For one symbol, what every setup did over the last few minutes and which condition passed or failed. Use it to answer "why did (or didn't) this alert fire?" |
-| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, each row's full details on a click, the day's flags, and why there are no picks yet. From 09:00 to 09:25 ET, a preview of the list as of the latest minute. Display only. See [The OV picks window](#the-ov-picks-window) |
+| **OV picks** | The OV picks module's 09:25 ET ranked list, when `OV_PICKS_DIR` is set: every name it ranked, its top picks highlighted, the columns the module sends, each row's full details on a click, the day's flags, and why there are no picks yet. From 09:00 to 09:25 ET, a preview of the list as of the latest minute. A calendar shows past days, and a ticker click there sends that day to linked charts and news. Display only. See [The OV picks window](#the-ov-picks-window) |
 
 ### Linking windows
 
@@ -358,14 +358,42 @@ opened stays open from one preview to the next.
 
 It adds "Next scan:" with the time when the module has one.
 
+**Past days.** The calendar at the left of the header shows an earlier day (the owner's
+request, 2026-11-07):
+
+- **‹** and **›** step to the previous and next day that has a list; **›** on the last past day
+  goes back to today. The date box picks any day up to today. **Today** goes back to the live
+  list. A reload of the page also opens on today.
+- A past day shows the module's own picks for it when it ran that day, frozen at 09:25 ET as
+  they were, with a **past day** badge. The notes are about that day; the watchlist and the
+  notice stay with today's picks.
+- For a day before the module ran, the window shows OV's own ranked list for it, from the
+  module's history files, with the same columns and row details and one of these badges:
+  **OV 2026 rebuild** (OV's current code and settings, run again on clean bars for that day; it
+  can differ from what OV showed live that morning) or **OV live scan** (OV's own live 09:25 ET
+  scan that morning).
+- A day with neither says "Nothing saved for this day": a market holiday, or a day before the
+  saved history starts. A file that can't be used says so, with the reason.
+- **Click a ticker** on a past day to send the ticker and that day to the window's linked
+  windows. A linked **chart** then ends on that day (each frame keeps its usual history before
+  it) and shows a "2026-11-04, not live ✕" chip; click the chip to show the stock live again. A
+  linked **news** window shows the news up to that day's 16:00 ET close, over at least 3 days,
+  and says so at the top. A ticker clicked in any other window, or typed into the chart, puts
+  the linked windows back on live. Scanner alerts are today's, so a past day's chart does not
+  mark them.
+- Past days are read every 5 minutes, not every 15 seconds: they do not change.
+
 **Set-up problems** replace the whole window: "OV picks are not set up" (`OV_PICKS_DIR` is not
 set), "This scanner has no OV picks reader" (`ov_picks/contract.py` is missing), "The OV picks
 folder is not there" (the folder is not mounted), or "OV picks could not be read". Each says what
-to do. A failed refresh keeps the last answer and says when it was read. Warnings from the module's
+to do. A date the route can't use says "That day can't be shown" with the reason (for example a
+day after today); the calendar stays, so you can pick another day. A failed refresh keeps the last answer and says when it was read. Warnings from the module's
 files are listed at the bottom.
 
 To see the window without the module, run `python scripts/ov_picks_demo.py --sample frozen`, or
-`--sample preview --at "2026-11-05 09:14:30"` for a preview (see
+`--sample preview --at "2026-11-05 09:14:30"` for a preview, or
+`--sample past_days --at "2026-11-05 10:40" --demo-market` for the calendar with a linked chart
+and news window on made-up data (see
 [Scripts Reference](#7-scripts-reference)).
 
 ---
@@ -506,7 +534,7 @@ filters more to choose from but costs more CPU per minute and a longer first dow
 | `scripts/compare_universes.py` | Builds two universes and explains every difference |
 | `start_scanner.bat`, `start_scanner.sh` | Launchers for Windows and for macOS / Linux (section 3) |
 | `restart_scanner.bat` | Stops a running scanner and starts it again (Windows) |
-| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`; a preview: `--sample preview --at "2026-11-05 09:14:30"`) |
+| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`; a preview: `--sample preview --at "2026-11-05 09:14:30"`; past days: `--sample past_days --at "2026-11-05 10:40" --demo-market`, which adds a linked chart and news window on made-up bars and headlines) |
 
 ### build_universe.py
 
