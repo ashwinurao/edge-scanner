@@ -60,6 +60,10 @@
   --ind-sma200: #26c6da;
   --ind-pd:     #e8edf5;
   --ind-pm:     #ffa726;
+  /* chart sessions (src/lib/sessionPrimitive.ts): a dark wash over extended
+     hours and a dashed line at each new day */
+  --chart-ext:     rgba(0, 0, 0, 0.32);
+  --chart-dayline: #4d6080;
 }
 
 [data-theme="daylight"] {
@@ -100,6 +104,8 @@
   --ind-sma200: #0e8fa3;
   --ind-pd:     #2b3440;
   --ind-pm:     #e07b00;
+  --chart-ext:     rgba(40, 55, 85, 0.08);
+  --chart-dayline: oklch(0.72 0.015 255);
 }
 
 html {

@@ -20,7 +20,8 @@ demo port 7787 by default, and makes no network call.
 
 --demo-market adds a linked chart and a linked news window, fed with made-up bars and
 headlines (every headline says "Demo"), so a click on a past day's ticker can be seen
-end to end (the calendar, Ash, 2026-11-07). It also makes up each row's 09:30 ET bar
+end to end (the calendar, Ash, 2026-11-07). Intraday bars run 04:00-20:00 ET, so the EXT
+toggle and the shaded extended hours show too. It also makes up each row's 09:30 ET bar
 from the row's levels, so the columns that fill after the open (scanner/ov_picks_live.py)
 show values and tones. Without it the demo has no data feed and those cells stay blank.
 
@@ -85,7 +86,10 @@ def _screen(market: bool = False) -> dict:
 
 # ---------------------------------------------------------------- --demo-market: made-up data
 
+# Intraday bars run 04:00-20:00 ET like Alpaca's, so the EXT toggle and the shaded
+# extended hours have something to show; outside 09:30-16:00 they move and trade less.
 _ET_OPEN, _ET_CLOSE = (9, 30), (16, 0)
+_ET_FIRST, _ET_LAST = (4, 0), (20, 0)
 _STEP = {"1Min": 1, "5Min": 5, "15Min": 15, "30Min": 30, "1Hour": 60, "4Hour": 240}
 
 
@@ -101,19 +105,20 @@ class _DemoFeed:
         while d <= end:
             if d.weekday() < 5 and (tf != "1Week" or d.weekday() == 0):
                 if tf in _STEP:
-                    t = datetime(d.year, d.month, d.day, *_ET_OPEN, tzinfo=ET)
-                    close = datetime(d.year, d.month, d.day, *_ET_CLOSE, tzinfo=ET)
+                    t = datetime(d.year, d.month, d.day, *_ET_FIRST, tzinfo=ET)
+                    last = datetime(d.year, d.month, d.day, *_ET_LAST, tzinfo=ET)
                     times = []
-                    while t < close:
+                    while t < last:
                         times.append(t)
                         t += timedelta(minutes=_STEP[tf])
                 else:
                     times = [datetime(d.year, d.month, d.day, tzinfo=ET)]
                 for t in times:
-                    move = price * rng.gauss(0, 0.004 if tf in _STEP else 0.02)
+                    rth = tf not in _STEP or _ET_OPEN <= (t.hour, t.minute) < _ET_CLOSE
+                    move = price * rng.gauss(0, (0.004 if rth else 0.0015) if tf in _STEP else 0.02)
                     o, c = price, max(1.0, price + move)
                     rows.append((o, max(o, c) * (1 + rng.random() * 0.002), min(o, c) * (1 - rng.random() * 0.002),
-                                 c, rng.randint(5_000, 80_000)))
+                                 c, rng.randint(5_000, 80_000) if rth else rng.randint(500, 8_000)))
                     stamps.append(t.astimezone(timezone.utc))
                     price = c
             d += timedelta(days=1)
