@@ -51,16 +51,24 @@ The answer always has every key in ROUTE_FIELDS:
   gets no live bars and no setups.
 - warnings: route-level warnings. The day's and the status file's own warnings stay
   inside those views.
+- refresh_seconds: how often the window should ask again while today's live columns are
+  about to fill or still forming (from 09:29:45 ET until each row has its 09:30 bar, at most
+  until 09:31:30 ET); null otherwise, when the window keeps its own pace.
 
 The views are the contract readers' own, with one addition: the live columns. A metric
 the module marks `live` (ov_picks/CONTRACT.md, "Live metrics") is null in the file; the
-route fills its value, tone and note from the day's 09:30 ET minute bar, and adds that
-bar to each such row as `first_minute` (null without one). A row without a live column is
-served as read. That
-bar is the route's only network call: one cached Alpaca request per day shown, after 09:31
-ET (Ash's go, project thread, 2026-11-07; scanner/ov_picks_live.py). A failed request
-leaves the cells blank with a note that says so; a failure while filling them adds a
-warning. The picks show either way.
+route fills its value, tone and note from the day's 09:30 ET minute, and adds that minute
+to each such row as `first_minute` (null without one). During the minute the values are
+the minute so far, and the row has `first_minute_as_of`, the ET time they run to; from
+just after 09:31 they are the minute's bar. A row without a live column is served as read.
+The minute is the route's only network call, both through the scanner's Alpaca data
+client, REST only: one cached bars request per day shown, from 09:31:03 ET (Ash's go,
+project thread, 2026-11-07), and while the minute forms, today only, one snapshot request
+for the day's tickers at most every 2 seconds while the window asks (Ash, project thread,
+2026-11-08 05:10 UTC: "can you make those two columns update live after 9:30 market
+open?"; scanner/ov_picks_live.py). A failed request leaves the cells blank, or as they
+were, with a note that says so; a failure while filling them adds a warning. The picks
+show either way.
 
 GET /api/v2/ov-picks/days lists the days that have picks, for the window's previous
 and next-day buttons, oldest first: each day folder up to today with a picks file, and
@@ -103,7 +111,8 @@ ERROR = "ERROR"
 
 ROUTE_FIELDS = ("set_up", "reason_code", "reason", "now_et", "today_et", "asked_date",
                 "trading_date", "is_today", "market_closed", "market_note", "next_scan_at",
-                "next_scan_et", "day", "status", "preview", "history", "in_universe", "warnings")
+                "next_scan_et", "day", "status", "preview", "history", "in_universe", "warnings",
+                "refresh_seconds")
 DAYS_FIELDS = ("set_up", "reason_code", "reason", "today_et", "days")
 
 _ET = ZoneInfo("America/New_York")
@@ -118,18 +127,24 @@ _DAY_NAME = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 def register(app: FastAPI, app_state: Any,
              clock: Optional[Callable[[], datetime]] = None,
-             first_minute_fetch: Optional[ov_picks_live.Fetch] = None) -> None:
+             first_minute_fetch: Optional[ov_picks_live.Fetch] = None,
+             first_minute_so_far: Optional[ov_picks_live.Forming] = None) -> None:
     """Add GET /api/v2/ov-picks and its days list to `app`, and the day watchlist and
     notice (ticket #20).
 
     `clock` returns an aware datetime (tests and scripts/ov_picks_demo.py pass a fake).
-    `first_minute_fetch` asks for the live columns' 09:30 ET bars; by default the
-    scanner's Alpaca feed does (scanner/ov_picks_live.py). Tests and the demo pass a fake.
+    `first_minute_fetch` asks for the live columns' 09:30 ET bars, `first_minute_so_far`
+    for the minute while it forms; by default the scanner's Alpaca feed does both
+    (scanner/ov_picks_live.py). Tests and the demo pass fakes; a fake bars request alone
+    runs without the minute so far.
     """
     now = clock or (lambda: datetime.now(_ET))
     register_morning(app, app_state, clock=clock)
-    bars = ov_picks_live.FirstMinuteBars(
-        first_minute_fetch or ov_picks_live.alpaca_fetch(getattr(app_state, "feed", None)))
+    feed = getattr(app_state, "feed", None)
+    if first_minute_fetch is None:
+        first_minute_fetch = ov_picks_live.alpaca_fetch(feed)
+        first_minute_so_far = first_minute_so_far or ov_picks_live.alpaca_forming(feed)
+    bars = ov_picks_live.FirstMinuteBars(first_minute_fetch, forming=first_minute_so_far)
 
     # A plain def: FastAPI runs it in a worker thread, so the file reads never block the
     # event loop that serves /ws/alerts.

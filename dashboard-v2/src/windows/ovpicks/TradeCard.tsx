@@ -79,7 +79,9 @@ export function TradeCard({ p }: { p: OvPick }) {
             <h4>Levels</h4>
             <LevelLadder lad={lad} ticker={p.ticker} />
             <p className="faint ovp-box-note">
-              Orange: the pre-market range. Grey: the prior day's range.{p.first_minute ? ' Blue: the first minute.' : ' The first minute shows after 09:31 ET.'}
+              Orange: the pre-market range. Grey: the prior day's range.{p.first_minute
+                ? (p.first_minute_as_of ? ` Blue: the first minute so far, to ${p.first_minute_as_of} ET.` : ' Blue: the first minute.')
+                : ' The first minute shows from 09:30 ET.'}
             </p>
           </section>
         )}

@@ -332,14 +332,17 @@ rest of the list.
   module sends the parts, their points and the reason (`ov_picks/CONTRACT.md`, "Score parts and
   rank reason"; `dashboard-v2/src/windows/ovpicks/parts.ts`). In a narrow window, scroll sideways
   to see them all.
-- **Columns that fill after the open** have "09:31" under their header. The scanner fills them
-  from the day's 09:30 ET minute bar: the first minute's range in ATR, and the open against the
-  pre-market range (**▲ above** the pre-market high, **▼ below** its low, or **inside**). Until
-  09:31 ET they show a dash, and the tooltip says when they fill. They also stay blank, with
-  the reason in the tooltip, when the scanner has no Alpaca feed, a request fails (it asks again
-  within a minute; **Refresh** shows the result), or a name had no trade in the 09:30 minute.
-  A past day fills them from that day's bar. The scanner asks Alpaca once per day shown and
-  keeps the answer (`scanner/ov_picks_live.py`).
+- **Columns that fill from the open** have "live 09:30" under their header: the first
+  minute's range in ATR, and the open against the pre-market range (**▲ above** the pre-market
+  high, **▼ below** its low, or **inside**). Until 09:30 ET they show a dash, and the tooltip
+  says when they fill. From 09:30:00 they show the first minute so far, with a pulsing dot, and
+  update every 2 seconds: the window refreshes that often until each name has its 09:30 bar
+  (at most until 09:31:30), then goes back to every 15 seconds. The tooltip says the time the
+  values run to. Just after 09:31 the minute's bar replaces them and the dot goes; that is the
+  final value. A name with no trade yet says so. The cells also stay blank, with the reason in
+  the tooltip, when the scanner has no Alpaca feed, a request fails (it asks again within
+  seconds; **Refresh** shows the result), or a name had no trade in the 09:30 minute. A past
+  day fills them from that day's bar (`scanner/ov_picks_live.py`).
 
 **Click a row** (or focus it and press Enter) to show its ticker in the window's linked charts
 and news, like a watchlist row (the owner's request, 2026-11-07). The row stays marked, so you
@@ -353,7 +356,7 @@ One row is open at a time. When the module says what the row's values mean, the 
 - the name, rank, status and earnings label on one line;
 - **Levels**: the row's prices on one scale, highest at the top: the pre-market high and low
   (orange bar), the prior day's high, low and close (grey bar), the last pre-market price and,
-  after 09:31 ET, the first minute's high, low and open (blue bar). A bracket on the left shows
+  from 09:30 ET, the first minute's high, low and open so far, final after 09:31 (blue bar). A bracket on the left shows
   one ATR on the same scale;
 - a **tile** for each number the module explains, coloured like its cell, with the module's
   note; the first-minute tiles also give the dollar width and where the open was;

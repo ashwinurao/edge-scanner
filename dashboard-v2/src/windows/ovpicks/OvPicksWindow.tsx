@@ -29,6 +29,7 @@ import type { OvPick, OvPicksAnswer, OvPicksConfig, OvPicksHistory, OvPicksPrevi
 import { KIND_RANGE_ATR, fmtCell, hasMeanings, liveKind, metricOf, toneClass } from './card'
 import { FieldList, TradeCard } from './TradeCard'
 import { partArrow, partHeader, partHeat, partLabels, partScore, partTitle, rankLooks, rankTitle } from './parts'
+import { anySoFar, pollMs, soFar } from './live'
 import { fetchOvPicks, fetchOvPicksDays, fillOvPicksWatchlist, syncOvPicksWatchlist, watchlistHas } from './api'
 import { OV_PICKS_DAYS_POLL_MS, OV_PICKS_PAST_POLL_MS, OV_PICKS_POLL_MS, OV_PICKS_WATCHLIST_ID } from './defaults'
 import { allWarnings, badges, dayLabel, dayNotes, fmtValue, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, smallColumn, topPicks, wholeColumn, whenET, type Note } from './view'
@@ -69,9 +70,11 @@ function Details({ p }: { p: OvPick }) {
 function ToneKey({ picks }: { picks: OvPick[] }) {
   const tones = new Set(picks.flatMap(p => p.metrics.map(m => m.tone).filter(Boolean)))
   const parts = picks.some(p => p.score_parts?.length)
-  if (!tones.size && !parts) return null
+  const live = anySoFar(picks)
+  if (!tones.size && !parts && !live) return null
   return (
     <div className="ovp-key faint">
+      {live && <span><i className="ovp-dot" />first minute so far, every 2 s; final from its bar just after 09:31</span>}
       {parts && (
         <>
           <span><i className="ovp-rb ovp-rb-first">1</i>OV's first pick</span>
@@ -134,8 +137,8 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
         <tr>
           <th className="ovp-tk">Ticker</th>
           {labels.map((l, i) => (
-            <th key={l} className={numeric[i] ? 'num' : ''} title={kinds[i] ? 'Fills after the open, from the 09:30 ET minute bar (at 09:31 ET)' : undefined}>
-              {l}{kinds[i] && <span className="ovp-when">09:31</span>}
+            <th key={l} className={numeric[i] ? 'num' : ''} title={kinds[i] ? 'Live from 09:30 ET: the first minute so far, every 2 s, then its bar just after 09:31 ET' : undefined}>
+              {l}{kinds[i] && <span className="ovp-when">live 09:30</span>}
             </th>
           ))}
           {parts.map((l, k) => {
@@ -170,8 +173,10 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
                 </td>
                 {labels.map((l, j) => {
                   const m = metricOf(p, l)
+                  // The minute so far (Ash, 2026-11-08): a dot until the 09:30 bar replaces it.
+                  const sofar = soFar(p, !!kinds[j]) !== null && m?.value !== null && m?.value !== undefined
                   const cls = [numeric[j] ? 'num mono' : '', toneClass(m?.tone), kinds[j] && (m?.value === null || m?.value === undefined) ? 'ovp-wait' : ''].filter(Boolean).join(' ')
-                  return <td key={l} className={cls} title={m?.note || undefined}>{fmtCell(m, whole[j], small[j])}</td>
+                  return <td key={l} className={cls} title={m?.note || undefined}>{sofar && <i className="ovp-dot" aria-label="so far" />}{fmtCell(m, whole[j], small[j])}</td>
                 })}
                 {parts.map((l, k) => {
                   const part = p.score_parts?.find(x => x.label === l)
@@ -236,7 +241,14 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
   // The calendar's day: null is today, live; YYYY-MM-DD is a past day. Not saved: a
   // reload opens on today.
   const [picked, setPicked] = useState<string | null>(null)
-  const { data: answer, error, loading, refresh } = usePoll(() => fetchOvPicks(picked), picked ? OV_PICKS_PAST_POLL_MS : OV_PICKS_POLL_MS, true, [picked])
+  // While today's first-minute columns fill, the route asks for a refresh every few seconds
+  // (scanner/ov_picks_live.py; Ash, 2026-11-08: "update every 2-3 secs").
+  const [refreshSeconds, setRefreshSeconds] = useState<number | null>(null)
+  const everyMs = picked ? OV_PICKS_PAST_POLL_MS : pollMs(OV_PICKS_POLL_MS, refreshSeconds)
+  const { data: answer, error, loading, refresh } = usePoll(() => fetchOvPicks(picked), everyMs, true, [picked])
+  // Adjusted while rendering, as React's docs advise for state that follows a new answer.
+  const answerRefresh = answer && !answer.asked_date ? answer.refresh_seconds ?? null : null
+  if (answerRefresh !== refreshSeconds) setRefreshSeconds(answerRefresh)
   const { data: daysAnswer, error: daysError } = usePoll(fetchOvPicksDays, OV_PICKS_DAYS_POLL_MS)
   // usePoll keeps the last answer while the next one loads: show only the answer for the
   // day asked, so a slow reply never puts one day's list under another day's date.
@@ -308,7 +320,7 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
       {nav}
       {extra}
       <span className="flex-spacer" />
-      <button className="btn sm" onClick={() => void refresh()} disabled={loading} title={picked ? 'Read this day again now' : `Read the picks again now (the card refreshes every ${OV_PICKS_POLL_MS / 1000} s)`}>{loading ? '…' : 'Refresh'}</button>
+      <button className="btn sm" onClick={() => void refresh()} disabled={loading} title={picked ? 'Read this day again now' : `Read the picks again now (the card refreshes every ${everyMs / 1000} s)`}>{loading ? '…' : 'Refresh'}</button>
     </div>
   )
 

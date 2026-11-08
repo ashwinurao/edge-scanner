@@ -24,6 +24,10 @@ end to end (the calendar, Ash, 2026-11-07). Intraday bars run 04:00-20:00 ET, so
 toggle and the lighter extended hours show too. It also makes up each row's 09:30 ET bar
 from the row's levels, so the columns that fill after the open (scanner/ov_picks_live.py)
 show values and tones. Without it the demo has no data feed and those cells stay blank.
+Started inside the 09:30 minute, it also makes up the minute so far, growing towards that
+bar, so the cells update every 2 seconds as they do live (Ash, 2026-11-08):
+
+    python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 09:30:20" --demo-market
 
     python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 10:40" --demo-market
 
@@ -187,6 +191,24 @@ def _demo_first_minute(out_dir: Path):
     return fetch
 
 
+def _demo_so_far(bars, clock):
+    """The made-up 09:30 bar's minute so far at the demo's time: the open first, then the
+    range growing to the bar's by 09:31, so the live cells change every few seconds."""
+    def so_far(day: date, tickers: list[str]) -> dict:
+        now = clock()
+        start = datetime.combine(day, datetime.min.time(), tzinfo=ET).replace(hour=9, minute=30)
+        share = min(1.0, max(0.05, (now - start).total_seconds() / 60))
+        out = {}
+        for ticker, bar in bars(day, tickers).items():
+            o = bar["open"]
+            high, low = o + (bar["high"] - o) * share, o - (o - bar["low"]) * share
+            out[ticker] = {"open": o, "high": round(high, 2), "low": round(low, 2),
+                           "close": round(low + (high - low) * 0.6, 2), "as_of": now}
+        return out
+
+    return so_far
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--sample", default="frozen",
@@ -226,8 +248,10 @@ def main() -> None:
     # line), so the demo hands it the fake clock without a hook in the app itself.
     real_register = ov_picks_route.register
     first_minute = _demo_first_minute(work / "out") if args.demo_market else None
+    so_far = _demo_so_far(first_minute, clock) if first_minute else None
     ov_picks_route.register = lambda app, app_state: real_register(app, app_state, clock=clock,
-                                                                   first_minute_fetch=first_minute)
+                                                                   first_minute_fetch=first_minute,
+                                                                   first_minute_so_far=so_far)
 
     # Set after the imports: scanner/data/alpaca.py loads .env on import and would override it.
     if args.unset:
