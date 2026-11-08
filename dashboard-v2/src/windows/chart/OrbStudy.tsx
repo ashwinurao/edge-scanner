@@ -4,7 +4,7 @@
 // places no order.
 import { useState } from 'react'
 import type { ChartConfig, ChartOverlays } from '../../types'
-import { ORB_VARIANTS, describeTrade } from '../../lib/orbStudy'
+import { ORB_VARIANTS, describeTrade, fmtR } from '../../lib/orbStudy'
 import { orbOn, type OrbStudy } from './useOrbStudy'
 import { Menu, MenuHead, MenuItem, MenuSep } from '../../components/Menu'
 
@@ -30,7 +30,8 @@ export function OrbChip({ win, disabled, onToggle }: { win: ChartConfig; disable
   )
 }
 
-/** The latest day's result for each selected variant, top left of the chart. */
+/** The latest day's result for each selected variant, bottom left of the chart: the
+ *  study's name in its chart colour, R as a green or red badge, then what happened. */
 export function OrbLegend({ study }: { study: OrbStudy }) {
   if (!study.variants.length) return null
   const last = study.days[study.days.length - 1]
@@ -40,10 +41,10 @@ export function OrbLegend({ study }: { study: OrbStudy }) {
       {study.loading && <div className="dim">Loading 1-minute bars…</div>}
       {!study.loading && !last && <div className="dim">No 09:30-11:59 ET bars to work from.</div>}
       {last?.trades.map(t => (
-        <div key={t.variant.key}>
-          <span style={{ color: `var(--ind-or${t.variant.n})` }}>{t.variant.label}</span>
-          {': '}
-          <span className={t.r == null ? 'dim' : t.r >= 0 ? 'up' : 'down'}>{describeTrade(t)}</span>
+        <div key={t.variant.key} className="orb-row">
+          <span className="orb-name" style={{ ['--c' as string]: `var(--ind-or${t.variant.n})` }}>OR{t.variant.n} · {t.variant.flat}</span>
+          <span className={`orb-r ${t.r == null ? 'none' : t.r >= 0 ? 'win' : 'loss'}`}>{t.r == null ? '—' : fmtR(t.r)}</span>
+          <span className="orb-text">{describeTrade(t, false)}</span>
         </div>
       ))}
     </div>

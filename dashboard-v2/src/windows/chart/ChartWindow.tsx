@@ -144,7 +144,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     // fork: darker regular hours and dashed day lines behind the candles (Ash, 2026-11-07).
     const sessions = new SessionPrimitive({ rth: pal.rth, dayLine: pal.dayLine })
     candles.attachPrimitive(sessions)
-    const orbLines = new OrbPrimitive({ or1: pal.or1, or2: pal.or2, stop: pal.down })
+    const orbLines = new OrbPrimitive({ or1: pal.or1, or2: pal.or2, up: pal.up, down: pal.down, bg: pal.bg })
     candles.attachPrimitive(orbLines)
     refs.current = { chart, candles, volume, lines: {}, priceLines: [], sessions, orb: orbLines }
 
@@ -159,7 +159,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       chart.applyOptions({ layout: { background: { type: ColorType.Solid, color: p.bg }, textColor: p.text }, grid: { vertLines: { color: p.grid }, horzLines: { color: p.grid } }, rightPriceScale: { borderColor: p.border }, timeScale: { borderColor: p.border } })
       candles.applyOptions({ upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down })
       sessions.setColors({ rth: p.rth, dayLine: p.dayLine })
-      orbLines.setColors({ or1: p.or1, or2: p.or2, stop: p.down })
+      orbLines.setColors({ or1: p.or1, or2: p.or2, up: p.up, down: p.down, bg: p.bg })
       const L = refs.current?.lines
       L?.vwap?.applyOptions({ color: p.vwap }); L?.pmVwap?.applyOptions({ color: p.vwap }); L?.ema9?.applyOptions({ color: p.ema9 }); L?.ema21?.applyOptions({ color: p.ema21 })
       L?.sma50?.applyOptions({ color: p.sma50 }); L?.sma100?.applyOptions({ color: p.sma100 }); L?.sma200?.applyOptions({ color: p.sma200 })
@@ -255,13 +255,9 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
         markers.push({ time: bar as UTCTimestamp, position: long ? 'belowBar' : 'aboveBar', shape: long ? 'arrowUp' : short ? 'arrowDown' : 'circle', color: pal.accent, text: name })
       }
     }
-    // The ORB studies' entries and exits, and their levels (src/lib/orbStudy.ts).
-    const od = orbDrawing(orb.days, visibleBars.map(b => toSecET(b.t)))
-    r.orb.setSegments(od.segments)
-    for (const m of od.markers) {
-      markers.push({ time: m.time as UTCTimestamp, position: m.position, shape: m.shape, text: m.text,
-        color: m.kind === 'entry' ? (m.n === 1 ? pal.or1 : pal.or2) : m.kind === 'win' ? pal.up : pal.down })
-    }
+    // The ORB studies' ranges, entries and exits, drawn with their own labels
+    // (src/lib/orbStudy.ts, src/lib/orbPrimitive.ts).
+    r.orb.setDrawing(orbDrawing(orb.days, visibleBars.map(b => toSecET(b.t))))
     markers.sort((a, b) => (a.time as number) - (b.time as number))
     r.candles.setMarkers(markers)
 

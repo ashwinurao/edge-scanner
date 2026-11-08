@@ -4,7 +4,7 @@
 // research backtest's own hand check (ov-research/opening_drive/or1_time_exits.py).
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ORB_VARIANTS, dailyAtr14, describeTrade, orbDays, orbDrawing, type MinuteBar, type OrbTrade } from '../src/lib/orbStudy.ts'
+import { ORB_VARIANTS, dailyAtr14, describeTrade, fmtR, orbDays, orbDrawing, type MinuteBar, type OrbTrade } from '../src/lib/orbStudy.ts'
 
 // 2026-11-06 is EST: 09:30 ET = 14:30 UTC. Bar j starts j minutes after 09:30.
 const at = (j: number, day = '2026-11-06', openUtcHour = 14) => {
@@ -201,26 +201,76 @@ test('legend lines say what happened', () => {
   assert.equal(describeTrade(t), 'long 101.01, stop 100.00, flat 101.50, +0.49R')
 })
 
+// The drawing (Ash, 2026-11-08 14:47 UTC: readable at a glance): the range as a box that
+// hands over to the trade's box at the entry bar, the trade with its entry, stop and one
+// exit per flat time. Replaces PR #34's lines-and-markers expectations.
 test('drawing on a 5-minute chart: entry and exits mark the bars holding them', () => {
   const days = orbDays(day(101.5, { ...BASE, 7: [101.5, 101.5, 101.5, 101.5] }), [v('orb1_1000'), v('orb1_1030')], () => 10, PAST)
   // 5-minute bars from 09:30 to 11:55 ET on 2026-11-06, in the chart's time space.
   const t0 = Date.UTC(2026, 10, 6, 9, 30) / 1000
   const chart = Array.from({ length: 30 }, (_, i) => t0 + i * 300)
-  const { segments, markers } = orbDrawing(days, chart)
-  assert.deepEqual(markers.map(m => [(m.time - t0) / 60, m.text]), [
-    [0, 'OR1 long'],          // 09:31 entry -> the 09:30 bar
-    [25, 'OR1 10:00 +0.49R'], // 09:59 close -> the 09:55 bar
-    [55, 'OR1 10:30 +0.49R'], // 10:29 close -> the 10:25 bar
+  const { ranges, trades } = orbDrawing(days, chart)
+  const min = (t: number) => (t - t0) / 60
+  // The 09:31 entry is in the range's own 5-minute bar, so the range box is that one bar.
+  assert.deepEqual(ranges.map(r => [min(r.from), min(r.to), r.high, r.low, r.label]), [[0, 0, 101, 100, 'OR1']])
+  assert.equal(trades.length, 1)
+  const t = trades[0]
+  // The trade box runs from the entry bar to the last exit.
+  assert.deepEqual([min(t.from), min(t.to), t.side, t.entry, t.stop, t.text], [0, 55, 1, 101.01, 100, 'OR1 ▲ long 101.01'])
+  assert.deepEqual(t.exits.map(e => [min(e.time), e.price, e.text, e.open]), [
+    [25, 101.5, '+0.49R 10:00', false], // 09:59 close -> the 09:55 bar
+    [55, 101.5, '+0.49R 10:30', false], // 10:29 close -> the 10:25 bar
   ])
-  const stop = segments.find(s => s.kind === 'stop')!
-  assert.deepEqual([(stop.from - t0) / 60, (stop.to - t0) / 60, stop.price], [0, 55, 100])
-  assert.equal(segments.filter(s => s.kind === 'range').length, 2)
 })
 
 test('drawing: a stop before 10:00 is one exit for both flat times', () => {
   const days = orbDays(day(101.5, { ...BASE, 25: [101.5, 101.5, 99.5, 101.5] }), [v('orb1_1000'), v('orb1_1030')], () => 10, PAST)
   const t0 = Date.UTC(2026, 10, 6, 9, 30) / 1000
   const chart = Array.from({ length: 150 }, (_, i) => t0 + i * 60)
-  const { markers } = orbDrawing(days, chart)
-  assert.deepEqual(markers.map(m => [(m.time - t0) / 60, m.text, m.kind]), [[1, 'OR1 long', 'entry'], [25, 'OR1 stop −1.00R', 'loss']])
+  const { ranges, trades } = orbDrawing(days, chart)
+  // On 1-minute bars the range box is the 09:30 bar and the trade box starts at 09:31.
+  assert.deepEqual(ranges.map(r => [(r.from - t0) / 60, (r.to - t0) / 60]), [[0, 0]])
+  assert.deepEqual([(trades[0].from - t0) / 60, (trades[0].to - t0) / 60], [1, 25])
+  assert.deepEqual(trades[0].exits.map(e => [(e.time - t0) / 60, e.price, e.r, e.text]), [[25, 100, -1, '−1.00R stop']])
+})
+
+test('drawing: a range with no trade runs to 10:15 and says why', () => {
+  const t0 = Date.UTC(2026, 10, 6, 9, 30) / 1000
+  const chart = Array.from({ length: 150 }, (_, i) => t0 + i * 60)
+  const none = orbDrawing(orbDays(day(100.5, { 0: [100.5, 101, 100, 100.5] }), [v('orb1_1000')], () => 10, PAST), chart)
+  assert.deepEqual(none.ranges.map(r => [(r.to - t0) / 60, r.label]), [[45, 'OR1 · no break']])
+  assert.equal(none.trades.length, 0)
+  const both = orbDrawing(orbDays(day(100.5, { 0: [100.5, 101, 100, 100.5], 3: [100.5, 101.2, 99.8, 100.5] }), [v('orb1_1000')], () => 10, PAST), chart)
+  assert.deepEqual(both.ranges.map(r => r.label), ['OR1 · both sides'])
+  // A break at 10:05 enters too late for flat 10:00.
+  const late = orbDrawing(orbDays(day(100.5, { 0: [100.5, 101, 100, 100.5], 35: [100.5, 101.2, 100.4, 101.1] }), [v('orb1_1000')], () => 10, PAST), chart)
+  assert.deepEqual(late.ranges.map(r => r.label), ['OR1 · entry after 10:00'])
+  assert.equal(late.trades.length, 0)
+})
+
+test('drawing: with OR1 and OR2 both on, each result names its range', () => {
+  const days = orbDays(day(101.5, { ...BASE, 2: [101.2, 101.4, 101.1, 101.3] }), [v('orb1_1000'), v('orb2_1000')], () => 10, PAST)
+  const t0 = Date.UTC(2026, 10, 6, 9, 30) / 1000
+  const chart = Array.from({ length: 150 }, (_, i) => t0 + i * 60)
+  const { ranges, trades } = orbDrawing(days, chart)
+  assert.deepEqual(ranges.map(r => [r.label, (r.to - t0) / 60]), [['OR1', 0], ['OR2', 1]])
+  assert.deepEqual(trades.map(t => [t.text, t.exits.map(e => e.text)]), [
+    ['OR1 ▲ long 101.01', ['OR1 +0.49R 10:00']],
+    // OR2 = 100.00-101.30; the 09:32 bar breaks it at 101.31. Risk 1.31 (> 2% of ATR 10).
+    ['OR2 ▲ long 101.31', [`OR2 ${fmtR((101.5 - 101.31) / 1.31)} 10:00`]],
+  ])
+})
+
+test('drawing: today\'s running trade is marked open at the last finished bar', () => {
+  const now = { day: '2026-11-06', min: 9 * 60 + 30 + 10.5 }   // 09:40:30 ET
+  const days = orbDays(day(101.5, BASE).slice(0, 10), [v('orb1_1000')], () => 10, now)
+  const t0 = Date.UTC(2026, 10, 6, 9, 30) / 1000
+  const chart = Array.from({ length: 11 }, (_, i) => t0 + i * 60)
+  const { trades } = orbDrawing(days, chart)
+  assert.deepEqual(trades[0].exits.map(e => [(e.time - t0) / 60, e.text, e.open]), [[9, '+0.49R so far, flat 10:00', true]])
+})
+
+test('legend line without R: the badge shows it', () => {
+  const t = run(day(101.5, BASE), ['orb1_1000']).trades[0]
+  assert.equal(describeTrade(t, false), 'long 101.01, stop 100.00, flat 101.50')
 })
