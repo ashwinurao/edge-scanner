@@ -62,6 +62,8 @@ cannot reach the scanner through your browser.
   more, deciding which stocks a setup may alert on.
 - **Dashboard windows.** Alert tables, charts, rankings (gainers, losers, most active, pre-market
   lists, new highs and lows), news, stock info, watchlists, Setup Check and a market clock.
+  Charts can draw opening-range breakout studies (OR1 / OR2, flat at 10:00 or 10:30 ET): entry,
+  stop and exit on each day, display only ([ORB studies](USER_GUIDE.md#orb-studies-on-the-chart)).
 - **One data connection.** Everything runs in one process on one market-data websocket: Alpaca by
   default, or Charles Schwab, which is free with a brokerage account. Providers sit behind one
   `DataFeed` interface, so anything that can stream 1-minute bars and answer for history can be

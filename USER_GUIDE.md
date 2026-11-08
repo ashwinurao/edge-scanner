@@ -228,7 +228,7 @@ while dragging to turn off snapping.
 | Window | What it shows |
 |---|---|
 | **Scanner** | The live alert stream. Each window has its own filters: setups, direction, minimum score and symbols. Column picker, row tint, and a sound or text-to-speech per window. **Hold** freezes the list while you read it; new alerts are still collected and sound, the button counts them (Resume +3), and Resume shows them |
-| **Chart** | Intraday and daily candles with extended hours, VWAP (plus a dashed premarket VWAP, 04:00-09:29 ET, when extended hours are shown; display only, the engine's VWAP starts at 09:30), EMAs, daily SMAs, prior-day and premarket levels. On intraday frames (1m to 1H) regular-hours bars (09:30-16:00 ET, by a bar's start time) sit on a darker band, so premarket and after-hours read lighter, and a dashed vertical line marks the first bar of each new ET day |
+| **Chart** | Intraday and daily candles with extended hours, VWAP (plus a dashed premarket VWAP, 04:00-09:29 ET, when extended hours are shown; display only, the engine's VWAP starts at 09:30), EMAs, daily SMAs, prior-day and premarket levels. On intraday frames (1m to 1H) regular-hours bars (09:30-16:00 ET, by a bar's start time) sit on a darker band, so premarket and after-hours read lighter, and a dashed vertical line marks the first bar of each new ET day. The **ORB ▾** menu adds opening-range breakout studies (OR1 or OR2, flat at 10:00 or 10:30 ET): where the 2026 research backtest entered, stopped and went flat, on every day of 1-minute bars the chart has, past days included. Display only, no orders. See [ORB studies on the chart](#orb-studies-on-the-chart) |
 | **Rankings** | Ranked lists: RVOL leaders, gainers and losers (from the close or the open), 5-minute movers, premarket gainers, losers and volume, and a new high / low of day stream |
 | **News** | Market-wide news, or news for the linked symbol |
 | **Stock Info** | Live per-symbol state plus fundamentals |
@@ -278,6 +278,46 @@ or `NEWS_RSS_SOURCES=` (empty) for Alpaca only.
 
 Two themes ship, a dark default and a light one, under **⋯** in the top bar. Shortcuts: `Ctrl+K` add a window, `Ctrl+L` lock or
 unlock the layout, `Ctrl+,` open Config, `Esc` close menus and dialogs.
+
+### ORB studies on the chart
+
+The chart's **ORB ▾** menu (also in the chart's settings) turns on four opening-range breakout
+studies (Ash, 2026-11-08). Each one shows, for every day of 1-minute bars the chart has, where the
+2026 research backtest would have entered, where its stop was and where it went flat:
+
+| Study | Opening range | Flat at |
+|-------|---------------|---------|
+| OR1, flat 10:00 | the 09:30 ET bar | the 09:59 bar's close |
+| OR1, flat 10:30 | the 09:30 ET bar | the 10:29 bar's close |
+| OR2, flat 10:00 | the 09:30 and 09:31 bars | the 09:59 bar's close |
+| OR2, flat 10:30 | the 09:30 and 09:31 bars | the 10:29 bar's close |
+
+The rules are the backtest's (`dashboard-v2/src/lib/orbStudy.ts`, from the research files
+`opening_drive/setups.py` and `or1_time_exits.py`):
+
+- Entry: the first bar up to 10:15 ET whose high is at least 1 cent above the range high (long),
+  or whose low is at least 1 cent below the range low (short). The fill is that price, or the
+  bar's open if it opened past it. A bar that breaks both sides skips the day. A missing range bar
+  means no trade.
+- Stop: the other side of the range, but at least 2% of the daily ATR(14) away (Wilder's, from
+  the chart's daily bars before the day).
+- On the entry bar, a close through the stop stops the trade, and so does a trade through it on a
+  down bar (long) or an up bar (short). One-minute bars hide which came first; this is the
+  backtest's headline guess.
+- Later bars: an open through the stop exits at that open, a trade through it at the stop.
+- An entry on or after the flat bar is skipped for that flat time.
+
+On the chart, dotted lines mark the range (OR1 pink, OR2 green) up to 10:15 or the exit, a solid
+line the entry and a dashed red line the stop. An arrow marks the entry, a dot each exit with its
+R (profit per share over the stop distance). A box at the top left says what each study did on
+the latest day. Today, a trade that has not reached its flat time says "open ... so far", and the
+study waits for each minute to end (and up to 2 more minutes for a bar to arrive) before it uses it.
+
+Every intraday frame shows the studies; a 5-minute chart marks the bar that holds each minute.
+The studies always work from 1-minute bars, which `/api/bars` serves for about the last three
+sessions, so older days on longer frames have no marks. A past day sent from the OV picks window
+works the same way. The chart's bars are Alpaca's raw prices; the backtest used its own cleaned
+2026 bars, so a day can differ by a cent or a missing minute.
 
 ### The OV picks window
 

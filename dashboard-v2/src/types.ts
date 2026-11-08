@@ -106,6 +106,8 @@ export type ChartTimeframe = '1m' | '5m' | '15m' | '30m' | '1H' | '4H' | '1D' | 
 export interface ChartOverlays {
   vwap: boolean; ema9: boolean; ema21: boolean; volume: boolean
   sma50: boolean; sma100: boolean; sma200: boolean; pdHL: boolean; pmHL: boolean
+  /** fork: opening-range breakout studies (src/lib/orbStudy.ts). Absent in older layouts. */
+  orb1_1000?: boolean; orb1_1030?: boolean; orb2_1000?: boolean; orb2_1030?: boolean
 }
 export interface ChartConfig extends WindowBase {
   type: 'chart'

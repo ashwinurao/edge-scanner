@@ -10,6 +10,10 @@ import { calcEMA, calcSMA, pmHighLow, priorDayHL, type Pt } from '../../lib/char
 import { calcPremarketVWAP } from '../../lib/pmVwap'
 import { sessionMarks } from '../../lib/sessionMarks'
 import { SessionPrimitive } from '../../lib/sessionPrimitive'
+import { OrbPrimitive } from '../../lib/orbPrimitive'
+import { ORB_VARIANTS, orbDrawing } from '../../lib/orbStudy'
+import { OrbChip, OrbLegend } from './OrbStudy'
+import { useOrbStudy } from './useOrbStudy'
 import { readChartPalette, THEME_EVENT, type ChartPalette } from '../../lib/theme'
 import { useLinkedSymbol, useLinkedAlert, useLinkedDay, linkSymbol } from '../../stores/linkStore'
 import { useSetups } from '../../stores/setupsStore'
@@ -67,6 +71,7 @@ interface Refs {
   lines: Partial<Record<'vwap' | 'pmVwap' | 'ema9' | 'ema21' | 'sma50' | 'sma100' | 'sma200', Line>>
   priceLines: IPriceLine[]
   sessions: SessionPrimitive
+  orb: OrbPrimitive
 }
 
 const ts = (t: string) => toSecET(t) as UTCTimestamp
@@ -107,6 +112,8 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
   const current = resp?.key === dataKey ? resp : null
   const bars = current?.bars ?? null
   const error = current?.error ?? null
+  // fork: opening-range breakout studies, display only (Ash, 2026-11-08; OrbStudy.tsx).
+  const orb = useOrbStudy({ symbol, tf, day, bars, daily, overlays: win.overlays, session, pollMs })
 
   useEffect(() => {
     if (!symbol) return
@@ -137,7 +144,9 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     // fork: darker regular hours and dashed day lines behind the candles (Ash, 2026-11-07).
     const sessions = new SessionPrimitive({ rth: pal.rth, dayLine: pal.dayLine })
     candles.attachPrimitive(sessions)
-    refs.current = { chart, candles, volume, lines: {}, priceLines: [], sessions }
+    const orbLines = new OrbPrimitive({ or1: pal.or1, or2: pal.or2, stop: pal.down })
+    candles.attachPrimitive(orbLines)
+    refs.current = { chart, candles, volume, lines: {}, priceLines: [], sessions, orb: orbLines }
 
     const ro = new ResizeObserver(entries => {
       const r = entries[0]?.contentRect
@@ -150,6 +159,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       chart.applyOptions({ layout: { background: { type: ColorType.Solid, color: p.bg }, textColor: p.text }, grid: { vertLines: { color: p.grid }, horzLines: { color: p.grid } }, rightPriceScale: { borderColor: p.border }, timeScale: { borderColor: p.border } })
       candles.applyOptions({ upColor: p.up, downColor: p.down, borderUpColor: p.up, borderDownColor: p.down, wickUpColor: p.up, wickDownColor: p.down })
       sessions.setColors({ rth: p.rth, dayLine: p.dayLine })
+      orbLines.setColors({ or1: p.or1, or2: p.or2, stop: p.down })
       const L = refs.current?.lines
       L?.vwap?.applyOptions({ color: p.vwap }); L?.pmVwap?.applyOptions({ color: p.vwap }); L?.ema9?.applyOptions({ color: p.ema9 }); L?.ema21?.applyOptions({ color: p.ema21 })
       L?.sma50?.applyOptions({ color: p.sma50 }); L?.sma100?.applyOptions({ color: p.sma100 }); L?.sma200?.applyOptions({ color: p.sma200 })
@@ -245,6 +255,14 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
         markers.push({ time: bar as UTCTimestamp, position: long ? 'belowBar' : 'aboveBar', shape: long ? 'arrowUp' : short ? 'arrowDown' : 'circle', color: pal.accent, text: name })
       }
     }
+    // The ORB studies' entries and exits, and their levels (src/lib/orbStudy.ts).
+    const od = orbDrawing(orb.days, visibleBars.map(b => toSecET(b.t)))
+    r.orb.setSegments(od.segments)
+    for (const m of od.markers) {
+      markers.push({ time: m.time as UTCTimestamp, position: m.position, shape: m.shape, text: m.text,
+        color: m.kind === 'entry' ? (m.n === 1 ? pal.or1 : pal.or2) : m.kind === 'win' ? pal.up : pal.down })
+    }
+    markers.sort((a, b) => (a.time as number) - (b.time as number))
     r.candles.setMarkers(markers)
 
     // Fit only when a fresh data set arrives (new symbol/timeframe, or the first
@@ -262,7 +280,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       fitKeyRef.current = fitKey
     }
     hadDataRef.current = visibleBars.length > 0
-  }, [visibleBars, bars, daily, win.overlays, session, symbol, tf, win.extended, selAlert, day])
+  }, [visibleBars, bars, daily, win.overlays, session, symbol, tf, win.extended, selAlert, day, orb.days])
 
   const set = (patch: Partial<ChartConfig>) => useScreens.getState().updateWindow(win.id, patch)
   const toggleOverlay = (k: keyof ChartOverlays) => set({ overlays: { ...win.overlays, [k]: !win.overlays[k] } })
@@ -284,6 +302,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
         </div>
         <button className={`chip${win.extended ? ' on' : ''}`} title="Extended hours" onClick={() => set({ extended: !win.extended })} disabled={!session}>EXT</button>
         <span className="flex-spacer" />
+        <OrbChip win={win} disabled={!session} onToggle={toggleOverlay} />
         {OVERLAY_CHIPS.map(c => (
           <button key={c.key} className={`chip ind${win.overlays[c.key] ? ' on' : ''}`} style={{ ['--ind' as string]: `var(${c.token})` }}
             onClick={() => toggleOverlay(c.key)} disabled={!!c.session && !session}
@@ -294,6 +313,7 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
       </div>
       <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         <div ref={hostRef} className="chart-host" />
+        {symbol && current && !error && <OrbLegend study={orb} />}
         {!symbol && <div style={{ position: 'absolute', inset: 0 }}><Empty title="No symbol">Pick a link color or type a symbol.</Empty></div>}
         {symbol && !current && <div className="chart-loading pulse">Loading {symbol} {tf}…</div>}
         {symbol && error && <div style={{ position: 'absolute', top: 6, left: 8 }} className="down">{error}</div>}
@@ -307,8 +327,8 @@ export function ChartSettings({ win, onChange }: { win: ChartConfig; onChange(p:
   const o = win.overlays
   const saveChartDefaults = useScreens(s => s.saveChartDefaults)
   const savedDefaults = useScreens(s => (s.activeId ? s.screens[s.activeId]?.chartOverlays : undefined))
-  const isSaved = !!savedDefaults && (Object.keys(o) as (keyof ChartOverlays)[]).every(k => savedDefaults[k] === o[k])
-  const t =(k: keyof ChartOverlays, label: string) => <Toggle checked={o[k]} onChange={v => onChange({ overlays: { ...o, [k]: v } })} label={label} />
+  const isSaved = !!savedDefaults && (Object.keys(o) as (keyof ChartOverlays)[]).every(k => !!savedDefaults[k] === !!o[k])
+  const t =(k: keyof ChartOverlays, label: string) => <Toggle checked={!!o[k]} onChange={v => onChange({ overlays: { ...o, [k]: v } })} label={label} />
   return (
     <>
       <div className="grid2">
@@ -319,6 +339,7 @@ export function ChartSettings({ win, onChange }: { win: ChartConfig; onChange(p:
       </div>
       <Field label="Intraday overlays">{t('vwap', 'Session VWAP (and premarket VWAP with extended hours)')}{t('ema9', 'EMA 9')}{t('ema21', 'EMA 21')}{t('volume', 'Volume')}</Field>
       <Field label="Moving averages (on this timeframe's bars)">{t('sma50', 'SMA 50')}{t('sma100', 'SMA 100')}{t('sma200', 'SMA 200')}</Field>
+      <Field label="Opening-range breakout studies (entry, stop and exit; no orders)">{ORB_VARIANTS.map(v => <span key={v.key}>{t(v.key, v.label)}</span>)}</Field>
       <Field label="Levels">{t('pdHL', 'Prior-day high / low / close (PDH / PDL / PDC)')}{t('pmHL', 'Premarket high / low (PMH / PML)')}</Field>
       <Field label="New charts on this screen"><button className="btn sm" disabled={isSaved} onClick={() => saveChartDefaults(o)}>{isSaved ? 'Saved as defaults' : 'Save these indicators as defaults'}</button></Field>
       <Toggle checked={win.extended} onChange={extended => onChange({ extended })} label="Show extended hours (04:00-20:00 ET)" />
