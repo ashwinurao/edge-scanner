@@ -233,8 +233,10 @@ export function orbDays(
 const px = (v: number | null) => (v == null ? '' : v.toFixed(2))
 export const fmtR = (r: number | null) => (r == null ? '' : `${r >= 0 ? '+' : '−'}${Math.abs(r).toFixed(2)}R`)
 
-/** One line for the chart's legend: what this variant did on its day. */
-export function describeTrade(t: OrbTrade): string {
+/** One line for the chart's legend: what this variant did on its day. The legend
+ *  shows R in its own coloured badge, so it asks for the line without it. */
+export function describeTrade(t: OrbTrade, withR = true): string {
+  const r = withR ? `, ${fmtR(t.r)}` : ''
   const st = t.setup
   switch (st.status) {
     case 'waiting_or': return `waiting for the ${st.n === 1 ? '09:30 bar' : '09:30 and 09:31 bars'}`
@@ -248,22 +250,43 @@ export function describeTrade(t: OrbTrade): string {
   const noAtr = t.atrKnown ? '' : ', no daily ATR so no 2% minimum'
   switch (t.status) {
     case 'late': return `no trade: entry after ${t.variant.flat}`
-    case 'stopped': return `${head}, stopped ${px(t.exit)}, ${fmtR(t.r)}${noAtr}`
-    case 'flat': return `${head}, flat ${px(t.exit)}, ${fmtR(t.r)}${noAtr}`
-    case 'open': return `${head}, open ${fmtR(t.r)} so far (flat at ${t.variant.flat})${noAtr}`
+    case 'stopped': return `${head}, stopped ${px(t.exit)}${r}${noAtr}`
+    case 'flat': return `${head}, flat ${px(t.exit)}${r}${noAtr}`
+    case 'open': return `${head}, open${withR ? ` ${fmtR(t.r)}` : ''} so far (flat at ${t.variant.flat})${noAtr}`
     default: return ''
   }
 }
 
 // ---------------------------------------------------------------- what the chart draws
 
-export type OrbLineKind = 'range' | 'entry' | 'stop'
-/** A level from one chart bar to another. Times are the chart's (toSecET) bar times. */
-export interface OrbSegment { n: 1 | 2; kind: OrbLineKind; from: number; to: number; price: number }
-export interface OrbMarker {
-  time: number; n: 1 | 2; kind: 'entry' | 'win' | 'loss'
-  position: 'aboveBar' | 'belowBar'; shape: 'arrowUp' | 'arrowDown' | 'circle'; text: string
+// Readable at a glance (Ash, 2026-11-08 14:47 UTC: "the study lines and entries/exits are
+// hard to read, with all very similar looking lines/colors/too tiny"). The range is a
+// shaded box, the trade a position box: risk (entry to stop) shaded red, the result
+// (entry to exit) green for a gain and red for a loss, with large labels drawn by
+// src/lib/orbPrimitive.ts. Times are the chart's (toSecET) bar times.
+
+/** The opening range from the 09:30 bar to the entry bar, or to 10:15 without a trade. */
+export interface OrbRangeBox {
+  n: 1 | 2; from: number; to: number; high: number; low: number
+  /** The range's label, with why there is no trade when there is none: "OR1 · no break". */
+  label: string
 }
+export interface OrbExitMark {
+  time: number; price: number; r: number
+  /** The exit's label: "+2.33R 10:00", "−1.00R stop", "+0.40R so far, flat 10:00";
+   *  led by "OR1 " or "OR2 " when both ranges are on. */
+  text: string
+  /** A trade still running today: marked at the last finished bar, never an exit. */
+  open: boolean
+}
+/** One entry and stop, with one exit per flat time (one when stopped before both). */
+export interface OrbTradeBox {
+  n: 1 | 2; side: 1 | -1; from: number; to: number; entry: number; stop: number
+  /** "OR1 ▼ short 56.59" */
+  text: string
+  exits: OrbExitMark[]
+}
+export interface OrbDrawing { ranges: OrbRangeBox[]; trades: OrbTradeBox[] }
 
 /** A slot's start in the chart's time space: ET wall-clock read as UTC (toSecET). */
 const slotSec = (day: string, j: number) => {
@@ -271,60 +294,81 @@ const slotSec = (day: string, j: number) => {
   return Date.UTC(y, m - 1, d, 9, 30 + j) / 1000
 }
 
-/** The chart bar holding second `sec`: the last bar starting at or before it, or the
- *  chart's last bar when `sec` is later than every bar. null before the first bar. */
-function barAt(chartTimes: readonly number[], sec: number): number | null {
-  if (!chartTimes.length || sec < chartTimes[0]) return null
+/** The index of the chart bar holding second `sec`: the last bar starting at or before
+ *  it, or the chart's last bar when `sec` is later than every bar. -1 before the first. */
+function barIndex(chartTimes: readonly number[], sec: number): number {
+  if (!chartTimes.length || sec < chartTimes[0]) return -1
   let lo = 0, hi = chartTimes.length - 1
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1
     if (chartTimes[mid] <= sec) lo = mid; else hi = mid - 1
   }
-  return chartTimes[lo]
+  return lo
+}
+const barAt = (chartTimes: readonly number[], sec: number): number | null => {
+  const i = barIndex(chartTimes, sec)
+  return i < 0 ? null : chartTimes[i]
 }
 
 const TRADED: TradeStatus[] = ['stopped', 'flat', 'open']
 
-/** Lines and markers for the selected variants on the chart's bars (sorted start
+/** Why a range has no trade, for its label. '' when it traded or is still waiting. */
+function noTradeNote(st: OrbSetup, trades: readonly OrbTrade[]): string {
+  switch (st.status) {
+    case 'no_break': return 'no break'
+    case 'both_sides': return 'both sides'
+    case 'waiting_break': return ''
+  }
+  if (st.status === 'entered' && trades.every(t => t.status === 'late')) return `entry after ${trades[0].variant.flat}`
+  return ''
+}
+
+/** Boxes and labels for the selected variants on the chart's bars (sorted start
  *  times, any intraday frame). On a 5-minute chart an entry at 09:41 marks the
- *  09:40 bar. OR1 and OR2 share one entry and stop each when both exits are on. */
-export function orbDrawing(days: readonly OrbDay[], chartTimes: readonly number[]): { segments: OrbSegment[]; markers: OrbMarker[] } {
-  const segments: OrbSegment[] = [], markers: OrbMarker[] = []
+ *  09:40 bar. Both flat times of one range share its entry and stop. */
+export function orbDrawing(days: readonly OrbDay[], chartTimes: readonly number[]): OrbDrawing {
+  const ranges: OrbRangeBox[] = [], trades: OrbTradeBox[] = []
   for (const d of days) {
+    // With OR1 and OR2 both on, each result says which range it belongs to.
+    const both = new Set(d.trades.map(t => t.variant.n)).size > 1
     for (const n of [1, 2] as const) {
-      const trades = d.trades.filter(t => t.variant.n === n)
-      if (!trades.length) continue
+      const all = d.trades.filter(t => t.variant.n === n)
+      if (!all.length) continue
       const st = d.setups[n]
       if (st.orHigh == null || st.orLow == null) continue
-      const traded = trades.filter(t => TRADED.includes(t.status))
-      const lastBar = Math.max(CUTOFF_BAR, ...traded.map(t => t.exitBar))
-      const from = barAt(chartTimes, slotSec(d.day, 0))
-      const to = barAt(chartTimes, slotSec(d.day, lastBar))
-      if (from == null || to == null) continue
-      segments.push({ n, kind: 'range', from, to, price: st.orHigh }, { n, kind: 'range', from, to, price: st.orLow })
-      if (!traded.length || st.entry == null) continue
+      const traded = all.filter(t => TRADED.includes(t.status))
+      const first = barIndex(chartTimes, slotSec(d.day, 0))
+      // With a trade the range box hands over to the trade box at the entry bar (the bar
+      // before it, unless the entry is in the range's own bar on a longer frame).
+      const last = traded.length
+        ? Math.max(first, barIndex(chartTimes, slotSec(d.day, st.entryBar)) - 1)
+        : barIndex(chartTimes, slotSec(d.day, CUTOFF_BAR))
+      if (first < 0 || last < 0) continue
+      const from = chartTimes[first], to = chartTimes[last]
+      const note = noTradeNote(st, all)
+      ranges.push({ n, from, to, high: st.orHigh, low: st.orLow, label: note ? `OR${n} · ${note}` : `OR${n}` })
+      if (!traded.length || st.entry == null || st.side === 0) continue
       const long = st.side > 0
       const at = barAt(chartTimes, slotSec(d.day, st.entryBar))!
-      const end = barAt(chartTimes, slotSec(d.day, Math.max(...traded.map(t => t.exitBar))))!
-      segments.push({ n, kind: 'entry', from: at, to: end, price: st.entry })
-      // The stop is the same for both exits (one entry, one ATR minimum).
-      segments.push({ n, kind: 'stop', from: at, to: end, price: traded[0].stop! })
-      markers.push({ time: at, n, kind: 'entry', position: long ? 'belowBar' : 'aboveBar', shape: long ? 'arrowUp' : 'arrowDown', text: `OR${n} ${long ? 'long' : 'short'}` })
+      const exits: OrbExitMark[] = []
       const seen = new Set<string>()
       for (const t of traded) {
-        const label = t.status === 'stopped' ? 'stop' : t.status === 'open' ? `open, flat ${t.variant.flat}` : t.variant.flat
-        const text = `OR${n} ${label} ${fmtR(t.r)}`
-        // Stopped before 10:00: both exits are the same exit, drawn once.
+        // Stopped before the first flat time: both exits are the same exit, drawn once.
         const key = t.status === 'stopped' ? `stop|${t.exitBar}` : `${t.variant.flat}|${t.exitBar}`
         if (seen.has(key)) continue
         seen.add(key)
-        markers.push({
-          time: barAt(chartTimes, slotSec(d.day, t.exitBar))!, n, kind: (t.r ?? 0) >= 0 ? 'win' : 'loss',
-          position: long ? 'aboveBar' : 'belowBar', shape: 'circle', text,
-        })
+        const label = t.status === 'stopped' ? 'stop' : t.status === 'open' ? `so far, flat ${t.variant.flat}` : t.variant.flat
+        exits.push({ time: barAt(chartTimes, slotSec(d.day, t.exitBar))!, price: t.exit!, r: t.r!, text: `${both ? `OR${n} ` : ''}${fmtR(t.r)} ${label}`, open: t.status === 'open' })
       }
+      exits.sort((a, b) => a.time - b.time)
+      trades.push({
+        n, side: st.side, from: at, to: exits[exits.length - 1].time, entry: st.entry,
+        // The stop is the same for both exits (one entry, one ATR minimum).
+        stop: traded[0].stop!,
+        text: `OR${n} ${long ? '▲ long' : '▼ short'} ${px(st.entry)}`,
+        exits,
+      })
     }
   }
-  markers.sort((a, b) => a.time - b.time)
-  return { segments, markers }
+  return { ranges, trades }
 }

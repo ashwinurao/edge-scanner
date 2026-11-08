@@ -307,11 +307,23 @@ The rules are the backtest's (`dashboard-v2/src/lib/orbStudy.ts`, from the resea
 - Later bars: an open through the stop exits at that open, a trade through it at the stop.
 - An entry on or after the flat bar is skipped for that flat time.
 
-On the chart, dotted lines mark the range (OR1 pink, OR2 green) up to 10:15 or the exit, a solid
-line the entry and a dashed red line the stop. An arrow marks the entry, a dot each exit with its
-R (profit per share over the stop distance). A box at the top left says what each study did on
-the latest day. Today, a trade that has not reached its flat time says "open ... so far", and the
-study waits for each minute to end (and up to 2 more minutes for a bar to arrive) before it uses it.
+On the chart (redrawn 2026-11-08 so it reads at a glance; `dashboard-v2/src/lib/orbPrimitive.ts`):
+
+- The range is a shaded box in the study's colour (OR1 violet, OR2 cyan), labelled on its left.
+  With a trade it runs up to the entry bar; without one it runs to 10:15 and its label says why
+  ("no break", "both sides", "entry after 10:00").
+- The trade is a position box from the entry bar to the exit: the risk, entry to stop, shaded
+  red with the stop as a dashed red line; the result, entry to exit, shaded green for a gain or
+  red for a loss. A solid line in the study's colour marks the entry, with an arrow at the entry
+  bar and a label such as "OR1 ▲ long 76.62" on the stop side of the line.
+- A dot marks each exit, with a large green or red label: "+5.14R 10:00", "−1.00R stop" (R is
+  profit per share over the stop distance). With OR1 and OR2 both on, each label names its range.
+  Labels move up or down so they never cover each other.
+- A box at the bottom left lists each study on the latest day: its name, R as a green or red
+  badge, then the entry, stop and exit.
+
+Today, a trade that has not reached its flat time shows "so far" and a hollow dot, and the study
+waits for each minute to end (and up to 2 more minutes for a bar to arrive) before it uses it.
 
 Every intraday frame shows the studies; a 5-minute chart marks the bar that holds each minute.
 The studies always work from 1-minute bars, which `/api/bars` serves for about the last three

@@ -61,8 +61,9 @@
   --ind-pd:     #e8edf5;
   --ind-pm:     #ffa726;
   /* fork: opening-range breakout studies (src/lib/orbPrimitive.ts) */
-  --ind-or1:    #f472b6;
-  --ind-or2:    #a3e635;
+  /* fork: away from the up/down greens and reds, which mark the ORB study's results */
+  --ind-or1:    #a78bfa;
+  --ind-or2:    #22d3ee;
   /* chart sessions (src/lib/sessionPrimitive.ts): a dark wash over regular
      hours, so extended hours read lighter, and a dashed line at each new day */
   --chart-rth:     rgba(0, 0, 0, 0.32);
@@ -107,8 +108,8 @@
   --ind-sma200: #0e8fa3;
   --ind-pd:     #2b3440;
   --ind-pm:     #e07b00;
-  --ind-or1:    #db2777;
-  --ind-or2:    #4d7c0f;
+  --ind-or1:    #7c3aed;
+  --ind-or2:    #0891b2;
   --chart-rth:     rgba(40, 55, 85, 0.08);
   --chart-dayline: oklch(0.72 0.015 255);
 }
@@ -418,9 +419,17 @@ select.input optgroup { background: var(--panel); color: var(--text-dim); }
 /* fork: the ORB studies' results, bottom left over the volume (the open's candles sit near the
    top on a rising or falling day); clicks go to the chart */
 .chart-orb-legend { position: absolute; bottom: 32px; left: 8px; z-index: 3; pointer-events: none; max-width: calc(100% - 80px);
-  font-size: 11px; line-height: 1.45; font-family: var(--font-mono); background: color-mix(in oklab, var(--panel) 90%, transparent);
-  padding: 3px 7px; border-radius: 4px; border: 1px solid var(--border-soft); }
-.chart-orb-legend .dim { color: var(--text-dim); }
+  font-size: 12px; line-height: 1.5; font-family: var(--font-mono); background: color-mix(in oklab, var(--panel) 92%, transparent);
+  padding: 5px 8px; border-radius: 5px; border: 1px solid var(--border); display: grid; gap: 3px; }
+.chart-orb-legend .dim { color: var(--text-dim); font-size: 11px; }
+/* one row per variant: the study's name in its chart colour, R as a badge, then the details */
+.orb-row { display: flex; align-items: center; gap: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orb-name { flex: none; padding: 0 6px; border-radius: 3px; font-weight: 600; background: var(--c); color: var(--panel); }
+.orb-r { flex: none; min-width: 62px; text-align: center; padding: 0 6px; border-radius: 3px; font-weight: 700; border: 1px solid transparent; }
+.orb-r.win { color: var(--up-text); background: var(--up-soft); border-color: color-mix(in oklab, var(--up) 45%, transparent); }
+.orb-r.loss { color: var(--down-text); background: var(--down-soft); border-color: color-mix(in oklab, var(--down) 45%, transparent); }
+.orb-r.none { color: var(--text-dim); border-color: var(--border-soft); font-weight: 600; }
+.orb-text { overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .menu-note { padding: 4px 9px 6px; max-width: 260px; font-size: 11px; line-height: 1.4; color: var(--text-dim); white-space: normal; }
 .chart-tf { display: inline-flex; gap: 1px; padding: 1px; background: var(--bg-2); border-radius: var(--r-sm); border: 1px solid var(--border-soft); }
 .chart-tf button { height: 20px; padding: 0 7px; border: 0; background: none; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--text-faint); cursor: pointer; }
