@@ -26,6 +26,10 @@ from the row's levels, so the columns that fill after the open (scanner/ov_picks
 show values and tones. Without it the demo has no data feed and those cells stay blank.
 
     python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 10:40" --demo-market
+
+The rank badges and the score parts (the owner's layout "C1", 2026-11-08) show on:
+
+    python scripts/ov_picks_demo.py --sample score_parts --at "2026-11-05 10:40" --demo-market
 """
 from __future__ import annotations
 

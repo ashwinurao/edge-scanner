@@ -30,7 +30,9 @@
 .ovp-toprow td { background: color-mix(in oklab, var(--accent) 10%, var(--panel)); }
 .ovp-toprow:hover td { background: color-mix(in oklab, var(--accent) 16%, var(--panel)); }
 .ovp-toprow td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-.ovp-split td { border-bottom: 1px solid color-mix(in oklab, var(--accent) 45%, var(--border)); }
+/* The cut under the last top pick: a dashed orange line, the scanner's colour for a mark
+   to notice (Ash, 2026-11-08, round 3 layout "C1"). */
+.ovp-split td { border-bottom: 2px dashed var(--heat-orange); }
 /* The row last sent to the linked charts and news (a row click, Ash, 2026-11-07). */
 .ovp-sel td { background: var(--row-sel); }
 .ovp-sel td:first-child { box-shadow: inset 3px 0 0 var(--text-dim); }
@@ -126,3 +128,39 @@
 .ovp-ladder .ovp-lad-last circle { fill: var(--text); }
 .ovp-ladder .ovp-lad-last text { fill: var(--text); }
 .ovp-ladder .ovp-lad-atr text { fill: var(--text-faint); font-size: 9.5px; }
+
+/* Rank badges and score parts (Ash, 2026-11-08, round 3 layout "C1": colour instead of
+   words; parts.ts). Gold is OV's first pick, green its other top picks, an outline the two
+   names after them. A part is faint when full, amber or orange as it loses points, and
+   ringed when it puts the name ahead of the next one. The tint and the ring are inset
+   shadows, like the tones above, so the row's own background still shows under them. */
+.ovp-rb { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; margin-right: 6px; border: 1px solid transparent; border-radius: 9px; font: 600 10.5px/1 var(--font-mono); font-style: normal; color: var(--text-faint); vertical-align: middle; }
+.ovp-rb-first { color: var(--bg); background: var(--link-yellow); box-shadow: 0 0 0 2px color-mix(in oklab, var(--link-yellow) 35%, transparent); }
+.ovp-rb-top { color: var(--bg); background: var(--up); }
+.ovp-rb-next { color: var(--text); border-color: var(--text-dim); }
+.ovp-first td { background: color-mix(in oklab, var(--link-yellow) 11%, var(--panel)); }
+.ovp-first:hover td { background: color-mix(in oklab, var(--link-yellow) 17%, var(--panel)); }
+.ovp-first td:first-child, .ovp-first.ovp-sel td:first-child { box-shadow: inset 3px 0 0 var(--link-yellow); }
+/* Part headers wrap onto two lines and part cells are tighter, so all six fit beside the
+   trade columns in a narrower window. */
+.ovp-table th.ovp-parth { color: var(--text-dim); white-space: normal; min-width: 44px; max-width: 74px; line-height: 1.15; }
+.ovp-table td.ovp-part { padding-left: 6px; padding-right: 6px; }
+.ovp-table .ovp-part1 { border-left: 1px solid var(--border); }
+/* The defaults sit at a lower specificity than the heat classes, so each class can set them. */
+.ovp-part { --tint: transparent; --ring: transparent; }
+.ovp-table td.ovp-part { box-shadow: inset 0 0 0 1.5px var(--ring), inset 0 0 0 999px var(--tint); }
+.ovp-part.ovp-part-full { --tint: color-mix(in oklab, var(--up) 9%, transparent); }
+.ovp-table td.ovp-part-full { color: var(--text-faint); }
+.ovp-part.ovp-part-short { --tint: color-mix(in oklab, var(--warn) 18%, transparent); }
+.ovp-table td.ovp-part-short { color: var(--warn); }
+.ovp-part.ovp-part-well-short { --tint: color-mix(in oklab, var(--heat-orange) 24%, transparent); }
+.ovp-table td.ovp-part-well-short { color: var(--heat-orange); font-weight: 600; }
+.ovp-part.ovp-part-decides { --ring: var(--accent); }
+.ovp-lost { margin-left: 2px; font-size: 9px; font-weight: 600; vertical-align: super; line-height: 0; }
+.ovp-key .ovp-rb { margin-right: 0; }
+.ovp-key-sep { color: var(--text-dim); }
+.ovp-sw.ovp-part-full, .ovp-sw.ovp-part-short, .ovp-sw.ovp-part-well-short { background: var(--tint); }
+.ovp-sw.ovp-part-well-short { background: color-mix(in oklab, var(--heat-orange) 70%, transparent); }
+.ovp-sw.ovp-part-short { background: color-mix(in oklab, var(--warn) 70%, transparent); }
+.ovp-sw.ovp-part-full { background: color-mix(in oklab, var(--up) 35%, transparent); }
+.ovp-sw.ovp-part-decides { box-shadow: inset 0 0 0 1.5px var(--accent); }

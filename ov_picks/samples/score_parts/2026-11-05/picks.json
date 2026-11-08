@@ -1,0 +1,1819 @@
+{
+  "schema_version": 1,
+  "kind": "ov_picks",
+  "trading_date": "2026-11-05",
+  "frozen_at": "2026-11-05T14:25:00Z",
+  "warmup_state": "READY",
+  "warmup_reason": "",
+  "late": false,
+  "shadow": true,
+  "earnings_status": "available",
+  "metric_labels": [
+    "Score",
+    "Ahead of next",
+    "Earnings",
+    "1st min (ATR)",
+    "Open vs PM",
+    "PM range (ATR)",
+    "ATR",
+    "Price",
+    "Gap %"
+  ],
+  "picks": [
+    {
+      "rank": 1,
+      "ticker": "AAAA",
+      "score": 100,
+      "status": "PICK",
+      "top": true,
+      "earnings_label": "AMC",
+      "metrics": [
+        {
+          "label": "Score",
+          "value": 100
+        },
+        {
+          "label": "Ahead of next",
+          "value": "+1.50 Jolt",
+          "tone": "good",
+          "note": "Ahead of BBBB by 1.50: Jolt +1.50 (4.30 against 1.35). Sample reason."
+        },
+        {
+          "label": "Earnings",
+          "value": "AMC",
+          "note": "Sample note: an earnings name."
+        },
+        {
+          "label": "1st min (ATR)",
+          "value": null,
+          "live": {
+            "kind": "first_minute_range_atr",
+            "bands": [
+              {
+                "max": 0.2,
+                "tone": "good",
+                "note": "Sample note: a tight first minute. The module's research says what it meant."
+              },
+              {
+                "min": 0.6,
+                "tone": "bad",
+                "note": "Sample note: a wide first minute. The module's research says what it meant."
+              },
+              {
+                "note": "Sample note: an ordinary first minute."
+              }
+            ]
+          }
+        },
+        {
+          "label": "Open vs PM",
+          "value": null,
+          "live": {
+            "kind": "open_vs_pm_range",
+            "bands": [
+              {
+                "is": "above",
+                "note": "Sample note: opened above the pre-market high."
+              },
+              {
+                "is": "below",
+                "note": "Sample note: opened below the pre-market low."
+              },
+              {
+                "is": "inside",
+                "note": "Sample note: opened inside the pre-market range."
+              }
+            ]
+          }
+        },
+        {
+          "label": "PM range (ATR)",
+          "value": 1.2,
+          "tone": "caution",
+          "note": "Sample note: a wide pre-market range."
+        },
+        {
+          "label": "ATR",
+          "value": 2.4
+        },
+        {
+          "label": "Price",
+          "value": 42.1
+        },
+        {
+          "label": "Gap %",
+          "value": 9.07
+        }
+      ],
+      "details": [
+        {
+          "label": "Gap vs prior close",
+          "value": "+9.07%",
+          "group": "At a glance"
+        },
+        {
+          "label": "Residual in ATR",
+          "value": "+0.85 ATR",
+          "group": "At a glance"
+        },
+        {
+          "label": "Gap shock",
+          "value": "4.10",
+          "group": "At a glance"
+        },
+        {
+          "label": "ATR (14)",
+          "value": "2.40",
+          "group": "At a glance"
+        },
+        {
+          "label": "Avg $ volume 20d",
+          "value": "$410M",
+          "group": "At a glance"
+        },
+        {
+          "label": "OV score",
+          "value": 91.5,
+          "group": "At a glance"
+        },
+        {
+          "label": "Status",
+          "value": "PICK",
+          "group": "At a glance"
+        },
+        {
+          "label": "Earnings timing",
+          "value": "AMC",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Earnings data",
+          "value": "available",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Last price",
+          "value": "42.10",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM high",
+          "value": "42.82",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM low",
+          "value": "39.94",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM RVOL",
+          "value": "6.20×",
+          "group": "Pre-market"
+        },
+        {
+          "label": "Ticker",
+          "value": "AAAA",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Name",
+          "value": "Aaaa Robotics",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Sector",
+          "value": "Technology",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format.",
+          "group": "Company and theme"
+        }
+      ],
+      "name": "Aaaa Robotics",
+      "levels": {
+        "atr": 2.4,
+        "prior_close": 38.6,
+        "prior_high": 39.56,
+        "prior_low": 37.4,
+        "pm_high": 42.82,
+        "pm_low": 39.94,
+        "last": 42.1
+      },
+      "score_parts": [
+        {
+          "label": "Size",
+          "value": "+0.81",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Flow",
+          "value": "22.4%",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Breadth",
+          "value": "21 of 29",
+          "points": 20.0,
+          "possible": 20.0
+        },
+        {
+          "label": "Pace",
+          "value": "9.10×",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Jolt",
+          "value": "4.30",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Range",
+          "value": "8.80%",
+          "points": 10.0,
+          "possible": 10.0
+        }
+      ],
+      "rank_reason": {
+        "text": "Ahead of BBBB by 1.50: Jolt +1.50 (4.30 against 1.35). Sample reason.",
+        "decides": "Jolt"
+      }
+    },
+    {
+      "rank": 2,
+      "ticker": "BBBB",
+      "score": 98.5,
+      "status": "PICK",
+      "top": true,
+      "earnings_label": null,
+      "metrics": [
+        {
+          "label": "Score",
+          "value": 98.5
+        },
+        {
+          "label": "Ahead of next",
+          "value": "+2.30 Pace",
+          "tone": "good",
+          "note": "Ahead of CCCC by 2.30: Pace +3.60 (4.10× against 1.11×), Flow +0.20 (12.2% against 1.49%), Jolt −1.50 (1.35 against 3.40). Sample reason."
+        },
+        {
+          "label": "Earnings",
+          "value": null,
+          "note": "Sample note: no earnings event."
+        },
+        {
+          "label": "1st min (ATR)",
+          "value": null,
+          "live": {
+            "kind": "first_minute_range_atr",
+            "bands": [
+              {
+                "max": 0.2,
+                "tone": "good",
+                "note": "Sample note: a tight first minute. The module's research says what it meant."
+              },
+              {
+                "min": 0.6,
+                "tone": "bad",
+                "note": "Sample note: a wide first minute. The module's research says what it meant."
+              },
+              {
+                "note": "Sample note: an ordinary first minute."
+              }
+            ]
+          }
+        },
+        {
+          "label": "Open vs PM",
+          "value": null,
+          "live": {
+            "kind": "open_vs_pm_range",
+            "bands": [
+              {
+                "is": "above",
+                "note": "Sample note: opened above the pre-market high."
+              },
+              {
+                "is": "below",
+                "note": "Sample note: opened below the pre-market low."
+              },
+              {
+                "is": "inside",
+                "note": "Sample note: opened inside the pre-market range."
+              }
+            ]
+          }
+        },
+        {
+          "label": "PM range (ATR)",
+          "value": 0.55,
+          "note": "Sample note: an ordinary pre-market range."
+        },
+        {
+          "label": "ATR",
+          "value": 0.95
+        },
+        {
+          "label": "Price",
+          "value": 18.45
+        },
+        {
+          "label": "Gap %",
+          "value": 7.27
+        }
+      ],
+      "details": [
+        {
+          "label": "Gap vs prior close",
+          "value": "+7.27%",
+          "group": "At a glance"
+        },
+        {
+          "label": "Residual in ATR",
+          "value": "+0.40 ATR",
+          "group": "At a glance"
+        },
+        {
+          "label": "Gap shock",
+          "value": "1.60",
+          "group": "At a glance"
+        },
+        {
+          "label": "ATR (14)",
+          "value": "0.95",
+          "group": "At a glance"
+        },
+        {
+          "label": "Avg $ volume 20d",
+          "value": "$410M",
+          "group": "At a glance"
+        },
+        {
+          "label": "OV score",
+          "value": 90.25,
+          "group": "At a glance"
+        },
+        {
+          "label": "Status",
+          "value": "PICK",
+          "group": "At a glance"
+        },
+        {
+          "label": "Earnings timing",
+          "value": "none",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Earnings data",
+          "value": "available",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Last price",
+          "value": "18.45",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM high",
+          "value": "18.58",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM low",
+          "value": "18.06",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM RVOL",
+          "value": "4.80×",
+          "group": "Pre-market"
+        },
+        {
+          "label": "Ticker",
+          "value": "BBBB",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Name",
+          "value": "Bbbb Energy",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Sector",
+          "value": "Consumer",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format.",
+          "group": "Company and theme"
+        }
+      ],
+      "name": "Bbbb Energy",
+      "levels": {
+        "atr": 0.95,
+        "prior_close": 17.2,
+        "prior_high": 17.58,
+        "prior_low": 16.72,
+        "pm_high": 18.58,
+        "pm_low": 18.06,
+        "last": 18.45
+      },
+      "score_parts": [
+        {
+          "label": "Size",
+          "value": "+0.42",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Flow",
+          "value": "12.2%",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Breadth",
+          "value": "24 of 46",
+          "points": 20.0,
+          "possible": 20.0
+        },
+        {
+          "label": "Pace",
+          "value": "4.10×",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Jolt",
+          "value": "1.35",
+          "points": 8.5,
+          "possible": 10.0
+        },
+        {
+          "label": "Range",
+          "value": "9.90%",
+          "points": 10.0,
+          "possible": 10.0
+        }
+      ],
+      "rank_reason": {
+        "text": "Ahead of CCCC by 2.30: Pace +3.60 (4.10× against 1.11×), Flow +0.20 (12.2% against 1.49%), Jolt −1.50 (1.35 against 3.40). Sample reason.",
+        "decides": "Pace"
+      }
+    },
+    {
+      "rank": 3,
+      "ticker": "CCCC",
+      "score": 96.2,
+      "status": "PICK",
+      "top": true,
+      "earnings_label": null,
+      "metrics": [
+        {
+          "label": "Score",
+          "value": 96.2
+        },
+        {
+          "label": "Ahead of next",
+          "value": "+0.04 Range",
+          "tone": "bad",
+          "note": "Ahead of DDDD by 0.04: Range +3.84 (10.7% against 4.29%), Pace −3.60 (1.11× against 17.0×), Flow −0.20 (1.49% against 45.0%). Sample reason."
+        },
+        {
+          "label": "Earnings",
+          "value": null,
+          "note": "Sample note: no earnings event."
+        },
+        {
+          "label": "1st min (ATR)",
+          "value": null,
+          "live": {
+            "kind": "first_minute_range_atr",
+            "bands": [
+              {
+                "max": 0.2,
+                "tone": "good",
+                "note": "Sample note: a tight first minute. The module's research says what it meant."
+              },
+              {
+                "min": 0.6,
+                "tone": "bad",
+                "note": "Sample note: a wide first minute. The module's research says what it meant."
+              },
+              {
+                "note": "Sample note: an ordinary first minute."
+              }
+            ]
+          }
+        },
+        {
+          "label": "Open vs PM",
+          "value": null,
+          "live": {
+            "kind": "open_vs_pm_range",
+            "bands": [
+              {
+                "is": "above",
+                "note": "Sample note: opened above the pre-market high."
+              },
+              {
+                "is": "below",
+                "note": "Sample note: opened below the pre-market low."
+              },
+              {
+                "is": "inside",
+                "note": "Sample note: opened inside the pre-market range."
+              }
+            ]
+          }
+        },
+        {
+          "label": "PM range (ATR)",
+          "value": 0.35,
+          "note": "Sample note: an ordinary pre-market range."
+        },
+        {
+          "label": "ATR",
+          "value": 3.1
+        },
+        {
+          "label": "Price",
+          "value": 71.92
+        },
+        {
+          "label": "Gap %",
+          "value": -3.1
+        }
+      ],
+      "details": [
+        {
+          "label": "Gap vs prior close",
+          "value": "-3.10%",
+          "group": "At a glance"
+        },
+        {
+          "label": "Residual in ATR",
+          "value": "-0.42 ATR",
+          "group": "At a glance"
+        },
+        {
+          "label": "Gap shock",
+          "value": "2.90",
+          "group": "At a glance"
+        },
+        {
+          "label": "ATR (14)",
+          "value": "3.10",
+          "group": "At a glance"
+        },
+        {
+          "label": "Avg $ volume 20d",
+          "value": "$410M",
+          "group": "At a glance"
+        },
+        {
+          "label": "OV score",
+          "value": 89.0,
+          "group": "At a glance"
+        },
+        {
+          "label": "Status",
+          "value": "PICK",
+          "group": "At a glance"
+        },
+        {
+          "label": "Earnings timing",
+          "value": "none",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Earnings data",
+          "value": "available",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Last price",
+          "value": "71.92",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM high",
+          "value": "72.19",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM low",
+          "value": "71.11",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM RVOL",
+          "value": "2.10×",
+          "group": "Pre-market"
+        },
+        {
+          "label": "Ticker",
+          "value": "CCCC",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Name",
+          "value": "Cccc Health",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Sector",
+          "value": "Technology",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format.",
+          "group": "Company and theme"
+        }
+      ],
+      "name": "Cccc Health",
+      "levels": {
+        "atr": 3.1,
+        "prior_close": 74.22,
+        "prior_high": 75.46,
+        "prior_low": 72.67,
+        "pm_high": 72.19,
+        "pm_low": 71.11,
+        "last": 71.92
+      },
+      "score_parts": [
+        {
+          "label": "Size",
+          "value": "−0.38",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Flow",
+          "value": "1.49%",
+          "points": 24.8,
+          "possible": 25.0
+        },
+        {
+          "label": "Breadth",
+          "value": "21 of 45",
+          "points": 20.0,
+          "possible": 20.0
+        },
+        {
+          "label": "Pace",
+          "value": "1.11×",
+          "points": 6.4,
+          "possible": 10.0
+        },
+        {
+          "label": "Jolt",
+          "value": "3.40",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Range",
+          "value": "10.7%",
+          "points": 10.0,
+          "possible": 10.0
+        }
+      ],
+      "rank_reason": {
+        "text": "Ahead of DDDD by 0.04: Range +3.84 (10.7% against 4.29%), Pace −3.60 (1.11× against 17.0×), Flow −0.20 (1.49% against 45.0%). Sample reason.",
+        "decides": "Range"
+      }
+    },
+    {
+      "rank": 4,
+      "ticker": "DDDD",
+      "score": 96.16,
+      "status": "PICK",
+      "top": true,
+      "earnings_label": "BMO",
+      "metrics": [
+        {
+          "label": "Score",
+          "value": 96.16
+        },
+        {
+          "label": "Ahead of next",
+          "value": "+0.26 Range",
+          "tone": "caution",
+          "note": "Ahead of EEEE by 0.26: Range +0.26 (4.29% against 4.22%). Sample reason."
+        },
+        {
+          "label": "Earnings",
+          "value": "BMO",
+          "note": "Sample note: an earnings name."
+        },
+        {
+          "label": "1st min (ATR)",
+          "value": null,
+          "live": {
+            "kind": "first_minute_range_atr",
+            "bands": [
+              {
+                "max": 0.2,
+                "tone": "good",
+                "note": "Sample note: a tight first minute. The module's research says what it meant."
+              },
+              {
+                "min": 0.6,
+                "tone": "bad",
+                "note": "Sample note: a wide first minute. The module's research says what it meant."
+              },
+              {
+                "note": "Sample note: an ordinary first minute."
+              }
+            ]
+          }
+        },
+        {
+          "label": "Open vs PM",
+          "value": null,
+          "live": {
+            "kind": "open_vs_pm_range",
+            "bands": [
+              {
+                "is": "above",
+                "note": "Sample note: opened above the pre-market high."
+              },
+              {
+                "is": "below",
+                "note": "Sample note: opened below the pre-market low."
+              },
+              {
+                "is": "inside",
+                "note": "Sample note: opened inside the pre-market range."
+              }
+            ]
+          }
+        },
+        {
+          "label": "PM range (ATR)",
+          "value": 2.1,
+          "tone": "caution",
+          "note": "Sample note: a wide pre-market range."
+        },
+        {
+          "label": "ATR",
+          "value": 5.8
+        },
+        {
+          "label": "Price",
+          "value": 126.3
+        },
+        {
+          "label": "Gap %",
+          "value": 5.43
+        }
+      ],
+      "details": [
+        {
+          "label": "Gap vs prior close",
+          "value": "+5.43%",
+          "group": "At a glance"
+        },
+        {
+          "label": "Residual in ATR",
+          "value": "+1.60 ATR",
+          "group": "At a glance"
+        },
+        {
+          "label": "Gap shock",
+          "value": "7.80",
+          "group": "At a glance"
+        },
+        {
+          "label": "ATR (14)",
+          "value": "5.80",
+          "group": "At a glance"
+        },
+        {
+          "label": "Avg $ volume 20d",
+          "value": "$410M",
+          "group": "At a glance"
+        },
+        {
+          "label": "OV score",
+          "value": 87.75,
+          "group": "At a glance"
+        },
+        {
+          "label": "Status",
+          "value": "PICK",
+          "group": "At a glance"
+        },
+        {
+          "label": "Earnings timing",
+          "value": "BMO",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Earnings data",
+          "value": "available",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Last price",
+          "value": "126.30",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM high",
+          "value": "129.34",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM low",
+          "value": "117.16",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM RVOL",
+          "value": "9.40×",
+          "group": "Pre-market"
+        },
+        {
+          "label": "Ticker",
+          "value": "DDDD",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Name",
+          "value": "Dddd Bank",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Sector",
+          "value": "Consumer",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format.",
+          "group": "Company and theme"
+        }
+      ],
+      "name": "Dddd Bank",
+      "levels": {
+        "atr": 5.8,
+        "prior_close": 119.8,
+        "prior_high": 122.12,
+        "prior_low": 116.9,
+        "pm_high": 129.34,
+        "pm_low": 117.16,
+        "last": 126.3
+      },
+      "score_parts": [
+        {
+          "label": "Size",
+          "value": "+2.03",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Flow",
+          "value": "45.0%",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Breadth",
+          "value": "16 of 47",
+          "points": 20.0,
+          "possible": 20.0
+        },
+        {
+          "label": "Pace",
+          "value": "17.0×",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Jolt",
+          "value": "8.91",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Range",
+          "value": "4.29%",
+          "points": 6.16,
+          "possible": 10.0
+        }
+      ],
+      "rank_reason": {
+        "text": "Ahead of EEEE by 0.26: Range +0.26 (4.29% against 4.22%). Sample reason.",
+        "decides": "Range"
+      }
+    },
+    {
+      "rank": 5,
+      "ticker": "EEEE",
+      "score": 95.9,
+      "status": "WATCH",
+      "top": false,
+      "earnings_label": null,
+      "metrics": [
+        {
+          "label": "Score",
+          "value": 95.9
+        },
+        {
+          "label": "Ahead of next",
+          "value": "= $3.6B",
+          "note": "Tied at 95.90 with FFFF; the sample tie-break puts the bigger value first: $3.6B against $1.2B."
+        },
+        {
+          "label": "Earnings",
+          "value": null,
+          "note": "Sample note: no earnings event."
+        },
+        {
+          "label": "1st min (ATR)",
+          "value": null,
+          "live": {
+            "kind": "first_minute_range_atr",
+            "bands": [
+              {
+                "max": 0.2,
+                "tone": "good",
+                "note": "Sample note: a tight first minute. The module's research says what it meant."
+              },
+              {
+                "min": 0.6,
+                "tone": "bad",
+                "note": "Sample note: a wide first minute. The module's research says what it meant."
+              },
+              {
+                "note": "Sample note: an ordinary first minute."
+              }
+            ]
+          }
+        },
+        {
+          "label": "Open vs PM",
+          "value": null,
+          "live": {
+            "kind": "open_vs_pm_range",
+            "bands": [
+              {
+                "is": "above",
+                "note": "Sample note: opened above the pre-market high."
+              },
+              {
+                "is": "below",
+                "note": "Sample note: opened below the pre-market low."
+              },
+              {
+                "is": "inside",
+                "note": "Sample note: opened inside the pre-market range."
+              }
+            ]
+          }
+        },
+        {
+          "label": "PM range (ATR)",
+          "value": 0.9,
+          "note": "Sample note: an ordinary pre-market range."
+        },
+        {
+          "label": "ATR",
+          "value": 2.2
+        },
+        {
+          "label": "Price",
+          "value": 55.4
+        },
+        {
+          "label": "Gap %",
+          "value": 4.73
+        }
+      ],
+      "details": [
+        {
+          "label": "Gap vs prior close",
+          "value": "+4.73%",
+          "group": "At a glance"
+        },
+        {
+          "label": "Residual in ATR",
+          "value": "+0.55 ATR",
+          "group": "At a glance"
+        },
+        {
+          "label": "Gap shock",
+          "value": "2.20",
+          "group": "At a glance"
+        },
+        {
+          "label": "ATR (14)",
+          "value": "2.20",
+          "group": "At a glance"
+        },
+        {
+          "label": "Avg $ volume 20d",
+          "value": "$410M",
+          "group": "At a glance"
+        },
+        {
+          "label": "OV score",
+          "value": 86.5,
+          "group": "At a glance"
+        },
+        {
+          "label": "Status",
+          "value": "WATCH",
+          "group": "At a glance"
+        },
+        {
+          "label": "Earnings timing",
+          "value": "none",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Earnings data",
+          "value": "available",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Last price",
+          "value": "55.40",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM high",
+          "value": "55.89",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM low",
+          "value": "53.91",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM RVOL",
+          "value": "2.90×",
+          "group": "Pre-market"
+        },
+        {
+          "label": "Ticker",
+          "value": "EEEE",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Name",
+          "value": "Eeee Travel",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Sector",
+          "value": "Technology",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format.",
+          "group": "Company and theme"
+        }
+      ],
+      "name": "Eeee Travel",
+      "levels": {
+        "atr": 2.2,
+        "prior_close": 52.9,
+        "prior_high": 53.78,
+        "prior_low": 51.8,
+        "pm_high": 55.89,
+        "pm_low": 53.91,
+        "last": 55.4
+      },
+      "score_parts": [
+        {
+          "label": "Size",
+          "value": "+0.65",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Flow",
+          "value": "2.32%",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Breadth",
+          "value": "11 of 33",
+          "points": 20.0,
+          "possible": 20.0
+        },
+        {
+          "label": "Pace",
+          "value": "2.95×",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Jolt",
+          "value": "3.00",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Range",
+          "value": "4.22%",
+          "points": 5.9,
+          "possible": 10.0
+        }
+      ],
+      "rank_reason": {
+        "text": "Tied at 95.90 with FFFF; the sample tie-break puts the bigger value first: $3.6B against $1.2B.",
+        "decides": "Sample tie-break",
+        "tie_break": {
+          "label": "Sample tie-break",
+          "value": "$3.6B"
+        }
+      }
+    },
+    {
+      "rank": 6,
+      "ticker": "FFFF",
+      "score": 95.9,
+      "status": "WATCH",
+      "top": false,
+      "earnings_label": null,
+      "metrics": [
+        {
+          "label": "Score",
+          "value": 95.9
+        },
+        {
+          "label": "Ahead of next",
+          "value": "+2.50 Range",
+          "tone": "good",
+          "note": "Ahead of GGGG by 2.50: Range +1.50 (4.21% against 3.50%), Size +1.00 (−1.12 against +0.29). Sample reason."
+        },
+        {
+          "label": "Earnings",
+          "value": null,
+          "note": "Sample note: no earnings event."
+        },
+        {
+          "label": "1st min (ATR)",
+          "value": null,
+          "live": {
+            "kind": "first_minute_range_atr",
+            "bands": [
+              {
+                "max": 0.2,
+                "tone": "good",
+                "note": "Sample note: a tight first minute. The module's research says what it meant."
+              },
+              {
+                "min": 0.6,
+                "tone": "bad",
+                "note": "Sample note: a wide first minute. The module's research says what it meant."
+              },
+              {
+                "note": "Sample note: an ordinary first minute."
+              }
+            ]
+          }
+        },
+        {
+          "label": "Open vs PM",
+          "value": null,
+          "live": {
+            "kind": "open_vs_pm_range",
+            "bands": [
+              {
+                "is": "above",
+                "note": "Sample note: opened above the pre-market high."
+              },
+              {
+                "is": "below",
+                "note": "Sample note: opened below the pre-market low."
+              },
+              {
+                "is": "inside",
+                "note": "Sample note: opened inside the pre-market range."
+              }
+            ]
+          }
+        },
+        {
+          "label": "PM range (ATR)",
+          "value": 1.4,
+          "tone": "caution",
+          "note": "Sample note: a wide pre-market range."
+        },
+        {
+          "label": "ATR",
+          "value": 0.61
+        },
+        {
+          "label": "Price",
+          "value": 12.06
+        },
+        {
+          "label": "Gap %",
+          "value": 5.79
+        }
+      ],
+      "details": [
+        {
+          "label": "Gap vs prior close",
+          "value": "+5.79%",
+          "group": "At a glance"
+        },
+        {
+          "label": "Residual in ATR",
+          "value": "+0.95 ATR",
+          "group": "At a glance"
+        },
+        {
+          "label": "Gap shock",
+          "value": "3.40",
+          "group": "At a glance"
+        },
+        {
+          "label": "ATR (14)",
+          "value": "0.61",
+          "group": "At a glance"
+        },
+        {
+          "label": "Avg $ volume 20d",
+          "value": "$410M",
+          "group": "At a glance"
+        },
+        {
+          "label": "OV score",
+          "value": 85.25,
+          "group": "At a glance"
+        },
+        {
+          "label": "Status",
+          "value": "WATCH",
+          "group": "At a glance"
+        },
+        {
+          "label": "Earnings timing",
+          "value": "none",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Earnings data",
+          "value": "available",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Last price",
+          "value": "12.06",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM high",
+          "value": "12.27",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM low",
+          "value": "11.42",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM RVOL",
+          "value": "3.70×",
+          "group": "Pre-market"
+        },
+        {
+          "label": "Ticker",
+          "value": "FFFF",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Name",
+          "value": "Ffff Apparel",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Sector",
+          "value": "Consumer",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format.",
+          "group": "Company and theme"
+        }
+      ],
+      "name": "Ffff Apparel",
+      "levels": {
+        "atr": 0.61,
+        "prior_close": 11.4,
+        "prior_high": 11.64,
+        "prior_low": 11.1,
+        "pm_high": 12.27,
+        "pm_low": 11.42,
+        "last": 12.06
+      },
+      "score_parts": [
+        {
+          "label": "Size",
+          "value": "−1.12",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Flow",
+          "value": "4.00%",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Breadth",
+          "value": "14 of 33",
+          "points": 20.0,
+          "possible": 20.0
+        },
+        {
+          "label": "Pace",
+          "value": "15.1×",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Jolt",
+          "value": "7.05",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Range",
+          "value": "4.21%",
+          "points": 5.9,
+          "possible": 10.0
+        }
+      ],
+      "rank_reason": {
+        "text": "Ahead of GGGG by 2.50: Range +1.50 (4.21% against 3.50%), Size +1.00 (−1.12 against +0.29). Sample reason.",
+        "decides": "Range"
+      }
+    },
+    {
+      "rank": 7,
+      "ticker": "GGGG",
+      "score": 93.4,
+      "status": "WATCH",
+      "top": false,
+      "earnings_label": "BMO",
+      "metrics": [
+        {
+          "label": "Score",
+          "value": 93.4
+        },
+        {
+          "label": "Ahead of next",
+          "value": "+1.90 Flow",
+          "tone": "good",
+          "note": "Ahead of HHHH by 1.90: Flow +2.00 (5.48% against 1.60%), Range +0.90 (3.50% against 3.41%), Size −1.00 (+0.29 against +0.66). Sample reason."
+        },
+        {
+          "label": "Earnings",
+          "value": "BMO",
+          "note": "Sample note: an earnings name."
+        },
+        {
+          "label": "1st min (ATR)",
+          "value": null,
+          "live": {
+            "kind": "first_minute_range_atr",
+            "bands": [
+              {
+                "max": 0.2,
+                "tone": "good",
+                "note": "Sample note: a tight first minute. The module's research says what it meant."
+              },
+              {
+                "min": 0.6,
+                "tone": "bad",
+                "note": "Sample note: a wide first minute. The module's research says what it meant."
+              },
+              {
+                "note": "Sample note: an ordinary first minute."
+              }
+            ]
+          }
+        },
+        {
+          "label": "Open vs PM",
+          "value": null,
+          "live": {
+            "kind": "open_vs_pm_range",
+            "bands": [
+              {
+                "is": "above",
+                "note": "Sample note: opened above the pre-market high."
+              },
+              {
+                "is": "below",
+                "note": "Sample note: opened below the pre-market low."
+              },
+              {
+                "is": "inside",
+                "note": "Sample note: opened inside the pre-market range."
+              }
+            ]
+          }
+        },
+        {
+          "label": "PM range (ATR)",
+          "value": 1.05,
+          "tone": "caution",
+          "note": "Sample note: a wide pre-market range."
+        },
+        {
+          "label": "ATR",
+          "value": 4.1
+        },
+        {
+          "label": "Price",
+          "value": 88.1
+        },
+        {
+          "label": "Gap %",
+          "value": 6.1
+        }
+      ],
+      "details": [
+        {
+          "label": "Gap vs prior close",
+          "value": "+6.10%",
+          "group": "At a glance"
+        },
+        {
+          "label": "Residual in ATR",
+          "value": "+0.70 ATR",
+          "group": "At a glance"
+        },
+        {
+          "label": "Gap shock",
+          "value": "5.00",
+          "group": "At a glance"
+        },
+        {
+          "label": "ATR (14)",
+          "value": "4.10",
+          "group": "At a glance"
+        },
+        {
+          "label": "Avg $ volume 20d",
+          "value": "$410M",
+          "group": "At a glance"
+        },
+        {
+          "label": "OV score",
+          "value": 84.0,
+          "group": "At a glance"
+        },
+        {
+          "label": "Status",
+          "value": "WATCH",
+          "group": "At a glance"
+        },
+        {
+          "label": "Earnings timing",
+          "value": "BMO",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Earnings data",
+          "value": "available",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Last price",
+          "value": "88.10",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM high",
+          "value": "89.18",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM low",
+          "value": "84.88",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM RVOL",
+          "value": "5.50×",
+          "group": "Pre-market"
+        },
+        {
+          "label": "Ticker",
+          "value": "GGGG",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Name",
+          "value": "Gggg Cruises",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Sector",
+          "value": "Technology",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format.",
+          "group": "Company and theme"
+        }
+      ],
+      "name": "Gggg Cruises",
+      "levels": {
+        "atr": 4.1,
+        "prior_close": 83.03,
+        "prior_high": 84.67,
+        "prior_low": 80.98,
+        "pm_high": 89.18,
+        "pm_low": 84.88,
+        "last": 88.1
+      },
+      "score_parts": [
+        {
+          "label": "Size",
+          "value": "+0.29",
+          "points": 24.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Flow",
+          "value": "5.48%",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Breadth",
+          "value": "11 of 33",
+          "points": 20.0,
+          "possible": 20.0
+        },
+        {
+          "label": "Pace",
+          "value": "13.8×",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Jolt",
+          "value": "6.00",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Range",
+          "value": "3.50%",
+          "points": 4.4,
+          "possible": 10.0
+        }
+      ],
+      "rank_reason": {
+        "text": "Ahead of HHHH by 1.90: Flow +2.00 (5.48% against 1.60%), Range +0.90 (3.50% against 3.41%), Size −1.00 (+0.29 against +0.66). Sample reason.",
+        "decides": "Flow"
+      }
+    },
+    {
+      "rank": 8,
+      "ticker": "HHHH",
+      "score": 91.5,
+      "status": "WATCH",
+      "top": false,
+      "earnings_label": null,
+      "metrics": [
+        {
+          "label": "Score",
+          "value": 91.5
+        },
+        {
+          "label": "Ahead of next",
+          "value": null
+        },
+        {
+          "label": "Earnings",
+          "value": null,
+          "note": "Sample note: no earnings event."
+        },
+        {
+          "label": "1st min (ATR)",
+          "value": null,
+          "live": {
+            "kind": "first_minute_range_atr",
+            "bands": [
+              {
+                "max": 0.2,
+                "tone": "good",
+                "note": "Sample note: a tight first minute. The module's research says what it meant."
+              },
+              {
+                "min": 0.6,
+                "tone": "bad",
+                "note": "Sample note: a wide first minute. The module's research says what it meant."
+              },
+              {
+                "note": "Sample note: an ordinary first minute."
+              }
+            ]
+          }
+        },
+        {
+          "label": "Open vs PM",
+          "value": null,
+          "live": {
+            "kind": "open_vs_pm_range",
+            "bands": [
+              {
+                "is": "above",
+                "note": "Sample note: opened above the pre-market high."
+              },
+              {
+                "is": "below",
+                "note": "Sample note: opened below the pre-market low."
+              },
+              {
+                "is": "inside",
+                "note": "Sample note: opened inside the pre-market range."
+              }
+            ]
+          }
+        },
+        {
+          "label": "PM range (ATR)",
+          "value": 0.6,
+          "note": "Sample note: an ordinary pre-market range."
+        },
+        {
+          "label": "ATR",
+          "value": 9.5
+        },
+        {
+          "label": "Price",
+          "value": 240.0
+        },
+        {
+          "label": "Gap %",
+          "value": 2.9
+        }
+      ],
+      "details": [
+        {
+          "label": "Gap vs prior close",
+          "value": "+2.90%",
+          "group": "At a glance"
+        },
+        {
+          "label": "Residual in ATR",
+          "value": "+0.30 ATR",
+          "group": "At a glance"
+        },
+        {
+          "label": "Gap shock",
+          "value": "1.90",
+          "group": "At a glance"
+        },
+        {
+          "label": "ATR (14)",
+          "value": "9.50",
+          "group": "At a glance"
+        },
+        {
+          "label": "Avg $ volume 20d",
+          "value": "$410M",
+          "group": "At a glance"
+        },
+        {
+          "label": "OV score",
+          "value": 82.75,
+          "group": "At a glance"
+        },
+        {
+          "label": "Status",
+          "value": "WATCH",
+          "group": "At a glance"
+        },
+        {
+          "label": "Earnings timing",
+          "value": "none",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Earnings data",
+          "value": "available",
+          "group": "Catalyst"
+        },
+        {
+          "label": "Last price",
+          "value": "240.00",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM high",
+          "value": "241.43",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM low",
+          "value": "235.73",
+          "group": "Pre-market"
+        },
+        {
+          "label": "PM RVOL",
+          "value": "1.60×",
+          "group": "Pre-market"
+        },
+        {
+          "label": "Ticker",
+          "value": "HHHH",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Name",
+          "value": "Hhhh Semis",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Sector",
+          "value": "Consumer",
+          "group": "Company and theme"
+        },
+        {
+          "label": "Note",
+          "value": "Made-up sample row; the numbers only show the format.",
+          "group": "Company and theme"
+        }
+      ],
+      "name": "Hhhh Semis",
+      "levels": {
+        "atr": 9.5,
+        "prior_close": 233.24,
+        "prior_high": 237.04,
+        "prior_low": 228.49,
+        "pm_high": 241.43,
+        "pm_low": 235.73,
+        "last": 240.0
+      },
+      "score_parts": [
+        {
+          "label": "Size",
+          "value": "+0.66",
+          "points": 25.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Flow",
+          "value": "1.60%",
+          "points": 23.0,
+          "possible": 25.0
+        },
+        {
+          "label": "Breadth",
+          "value": "13 of 26",
+          "points": 20.0,
+          "possible": 20.0
+        },
+        {
+          "label": "Pace",
+          "value": "1.69×",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Jolt",
+          "value": "3.04",
+          "points": 10.0,
+          "possible": 10.0
+        },
+        {
+          "label": "Range",
+          "value": "3.41%",
+          "points": 3.5,
+          "possible": 10.0
+        }
+      ]
+    }
+  ],
+  "reference_state": null,
+  "reference_promoted": []
+}

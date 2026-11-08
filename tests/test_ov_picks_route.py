@@ -219,6 +219,10 @@ ROUTE_CASES = {
     # layout, 2026-11-07). After the open, with no feed here: the live cells say so.
     "meanings": ("2026-11-05 10:40", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
                  TOP, 8, c.SETTLED_SAME, c.PENDING, NEXT_SCAN),
+    # The meanings day with score parts and rank reasons (the window's "C1" layout,
+    # 2026-11-08): the route passes them on as read.
+    "score_parts": ("2026-11-05 10:40", True, True, False, c.READY, c.EARNINGS_AVAILABLE,
+                    TOP, 8, c.SETTLED_SAME, c.PENDING, NEXT_SCAN),
 }
 # The warmup state of each sample day without picks.
 NO_PICKS_WARMUP = {"warming": c.WARMING, "preview": c.DATA_READY}

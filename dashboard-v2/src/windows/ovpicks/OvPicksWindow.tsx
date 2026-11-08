@@ -14,6 +14,9 @@
 // Each cell takes the tone and note the module gives it, and the columns that fill after
 // the open say so; the ▸ arrow opens a trade card when the module sends levels, notes or
 // groups (Ash, 2026-11-07, layout "C1 + E1"; card.ts, TradeCard.tsx).
+// Each row's rank is a badge (gold for OV's first pick, green for the other top picks), and
+// the parts that made up its score are coloured cells after the columns, so what puts each
+// name above the next reads without words (Ash, 2026-11-08, round 3 layout "C1"; parts.ts).
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { usePoll } from '../../lib/usePoll'
 import { DASH } from '../../lib/format'
@@ -23,9 +26,10 @@ import { Empty } from '../../components/primitives'
 import type { OvPick, OvPicksAnswer, OvPicksConfig, OvPicksHistory, OvPicksPreview } from './types'
 import { KIND_RANGE_ATR, fmtCell, hasMeanings, liveKind, metricOf, toneClass } from './card'
 import { FieldList, TradeCard } from './TradeCard'
+import { lostText, partHeat, partLabels, partTitle, rankLooks, rankTitle } from './parts'
 import { fetchOvPicks, fetchOvPicksDays, fillOvPicksWatchlist, syncOvPicksWatchlist, watchlistHas } from './api'
 import { OV_PICKS_DAYS_POLL_MS, OV_PICKS_PAST_POLL_MS, OV_PICKS_POLL_MS, OV_PICKS_WATCHLIST_ID } from './defaults'
-import { allWarnings, badges, dayLabel, dayNotes, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, smallColumn, topPicks, wholeColumn, whenET, type Note } from './view'
+import { allWarnings, badges, dayLabel, dayNotes, fmtValue, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, smallColumn, topPicks, wholeColumn, whenET, type Note } from './view'
 import './ovpicks.css'
 
 // After the card first sees the day's picks, the scanner's watcher can take a few seconds
@@ -62,9 +66,23 @@ function Details({ p }: { p: OvPick }) {
  *  means, in the cell's tooltip. */
 function ToneKey({ picks }: { picks: OvPick[] }) {
   const tones = new Set(picks.flatMap(p => p.metrics.map(m => m.tone).filter(Boolean)))
-  if (!tones.size) return null
+  const parts = picks.some(p => p.score_parts?.length)
+  if (!tones.size && !parts) return null
   return (
     <div className="ovp-key faint">
+      {parts && (
+        <>
+          <span><i className="ovp-rb ovp-rb-first">1</i>OV's first pick</span>
+          <span><i className="ovp-rb ovp-rb-top">2</i>top picks</span>
+          <span><i className="ovp-rb ovp-rb-next">5</i>next two</span>
+          <span className="ovp-key-sep">score parts:</span>
+          <span><i className="ovp-sw ovp-part-full" />full</span>
+          <span><i className="ovp-sw ovp-part-short" />short</span>
+          <span><i className="ovp-sw ovp-part-well-short" />well short</span>
+          <span><i className="ovp-sw ovp-part-decides" />puts it ahead of the next name</span>
+          {tones.size > 0 && <span className="ovp-key-sep">columns:</span>}
+        </>
+      )}
       {tones.has('good') && <span><i className="ovp-sw ovp-tone-good" />good</span>}
       {tones.has('caution') && <span><i className="ovp-sw ovp-tone-caution" />caution</span>}
       {tones.has('bad') && <span><i className="ovp-sw ovp-tone-bad" />warning</span>}
@@ -97,6 +115,8 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
   const numeric = labels.map((l, i) => kinds[i] === KIND_RANGE_ATR || picks.some(p => typeof metricValue(p, l) === 'number'))
   const whole = labels.map(l => wholeColumn(picks, l))
   const small = labels.map(l => smallColumn(picks, l))
+  const parts = partLabels(picks)
+  const looks = rankLooks(picks)
   const onRowKey = (e: KeyboardEvent<HTMLTableRowElement>, ticker: string) => {
     if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
     e.preventDefault()
@@ -115,6 +135,12 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
               {l}{kinds[i] && <span className="ovp-when">09:31</span>}
             </th>
           ))}
+          {parts.map((l, k) => (
+            <th key={`part:${l}`} className={`num ovp-parth${k === 0 ? ' ovp-part1' : ''}`}
+              title={`A part of OV's score. Faint: full points; amber or orange: points lost; ringed: the part that puts the name ahead of the next one. Hover a cell for its points.`}>
+              {l}
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
@@ -123,15 +149,17 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
           const isOpen = openTicker === p.ticker
           // A line under the last top pick, where the rest of the ranked list starts.
           const lastTop = p.top && !picks[i + 1]?.top && i + 1 < picks.length
-          const cls = ['ovp-row', p.top ? 'ovp-toprow' : '', lastTop ? 'ovp-split' : '', isOpen ? 'ovp-open' : '', selTicker === p.ticker ? 'ovp-sel' : ''].filter(Boolean).join(' ')
+          const look = looks[i]
+          const cls = ['ovp-row', p.top ? 'ovp-toprow' : '', look === 'first' ? 'ovp-first' : '', lastTop ? 'ovp-split' : '', isOpen ? 'ovp-open' : '', selTicker === p.ticker ? 'ovp-sel' : ''].filter(Boolean).join(' ')
+          const decides = p.rank_reason?.decides ?? null
           return (
             <Fragment key={p.ticker}>
               <tr className={cls} tabIndex={0} onClick={() => pick(p.ticker)} onKeyDown={e => onRowKey(e, p.ticker)} title={rowTitle(p.ticker)}>
                 <td className="ovp-tk">
                   <button className="ovp-chev" aria-expanded={isOpen} aria-label={`${isOpen ? 'Close' : 'Open'} the details of ${p.ticker}`}
                     onClick={e => { e.stopPropagation(); toggle(p.ticker) }} title={isOpen ? 'Close the details' : 'Show every field of this row'}>{isOpen ? '▾' : '▸'}</button>
+                  <span className={`ovp-rb ovp-rb-${look}`} title={rankTitle(p, look, topTitle)} aria-label={rankTitle(p, look, topTitle)}>{p.rank}</span>
                   <span className="ovp-sym sym">{p.ticker}</span>
-                  {p.top && <span className="badge ovp-b-ok ovp-tag" title={topTitle}>top</span>}
                   {p.earnings_label && <span className="badge ovp-b-info ovp-tag" title="Earnings label">{p.earnings_label}</span>}
                   {outside && <span className="badge ovp-b-warn ovp-tag" title="Not in the scanner's universe: no live bars and no setups. Charts still work.">no setups</span>}
                 </td>
@@ -140,10 +168,22 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
                   const cls = [numeric[j] ? 'num mono' : '', toneClass(m?.tone), kinds[j] && (m?.value === null || m?.value === undefined) ? 'ovp-wait' : ''].filter(Boolean).join(' ')
                   return <td key={l} className={cls} title={m?.note || undefined}>{fmtCell(m, whole[j], small[j])}</td>
                 })}
+                {parts.map((l, k) => {
+                  const part = p.score_parts?.find(x => x.label === l)
+                  const first = k === 0 ? ' ovp-part1' : ''
+                  if (!part) return <td key={`part:${l}`} className={`num mono ovp-part${first}`}>{DASH}</td>
+                  const ring = decides === l
+                  const lost = lostText(part)
+                  return (
+                    <td key={`part:${l}`} className={`num mono ovp-part ovp-part-${partHeat(part)}${ring ? ' ovp-part-decides' : ''}${first}`} title={partTitle(part, ring)}>
+                      {fmtValue(part.value)}{lost && <sup className="ovp-lost">{lost}</sup>}
+                    </td>
+                  )
+                })}
               </tr>
               {isOpen && (
                 <tr className="ovp-details-row">
-                  <td colSpan={labels.length + 1}><Details p={p} /></td>
+                  <td colSpan={labels.length + parts.length + 1}><Details p={p} /></td>
                 </tr>
               )}
             </Fragment>

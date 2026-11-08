@@ -11,6 +11,8 @@ type and allowed value. This module is its code:
 - what each value means (owner, 2026-11-07, the window's layout "C1 + E1"): a row's metrics may
   carry a tone and a note, its details a group, and the row its price levels; a live metric is
   a column Edge Scanner fills after the open from the day's 09:30 ET minute bar;
+- what made up a score (owner, 2026-11-08): a row may carry its score's parts and the reason
+  it ranks above the next row;
 - record_job_state: replace one job's entry in the status file;
 - read_day, read_preview, read_history, read_status: readers that never raise on a missing
   or bad file, and history_days, the past days exported;
@@ -214,8 +216,10 @@ F_METRICS = "metrics"
 F_DETAILS = "details"
 F_NAME = "name"                # optional: the company's name
 F_LEVELS = "levels"            # optional: the row's price levels (LEVEL_FIELDS)
+F_SCORE_PARTS = "score_parts"  # optional: the parts that make up the row's score (PART_FIELDS)
+F_RANK_REASON = "rank_reason"  # optional: why the row ranks above the next one (RANK_REASON_FIELDS)
 PICK_REQUIRED = (F_RANK, F_TICKER, F_SCORE, F_STATUS, F_TOP, F_EARNINGS_LABEL, F_METRICS, F_DETAILS)
-PICK_OPTIONAL = (F_NAME, F_LEVELS)
+PICK_OPTIONAL = (F_NAME, F_LEVELS, F_SCORE_PARTS, F_RANK_REASON)
 PICK_FIELDS = PICK_REQUIRED + PICK_OPTIONAL
 
 # One entry of a row's metrics or details.
@@ -240,6 +244,23 @@ F_MIN = "min"
 F_MAX = "max"
 F_IS = "is"
 BAND_FIELDS = (F_MIN, F_MAX, F_IS, F_TONE, F_NOTE)
+# What made up a row's score, and why the row ranks above the next one (owner, project
+# thread, 2026-11-08: the score's parts and the reason for each rank, at a glance for the top
+# names). A part: its label, its value as the window shows it, the points it added to the
+# score and the most it could add. Edge Scanner draws the parts and the reason as written.
+F_POINTS = "points"
+F_POSSIBLE = "possible"
+PART_FIELDS = (F_LABEL, F_VALUE, F_POINTS, F_POSSIBLE)
+MAX_SCORE_PARTS = 12
+# Float slack when a part's points are checked against its most.
+PART_SLACK = 1e-9
+# A rank reason: one sentence, the label of the part or tie-break that puts the row above the
+# next one (null when nothing does, as on the last row), and the tie-break the ranking uses on
+# equal scores, as an entry {label, value}. A few words of it can be a metric, like any column.
+F_TEXT = "text"
+F_DECIDES = "decides"
+F_TIE_BREAK = "tie_break"
+RANK_REASON_FIELDS = (F_TEXT, F_DECIDES, F_TIE_BREAK)
 
 F_CHECKED_AT = "checked_at"
 F_STATE = "state"
@@ -596,6 +617,79 @@ def _pick_problems(i: int, pick: Any, *, strict: bool, known_values: bool) -> li
     if pick.get(F_NAME) is not None and not _is_label(pick[F_NAME]):
         problems.append(f"{where}.name must be text of 1 to {MAX_TEXT_LEN} characters or null, not {pick[F_NAME]!r}")
     problems += _levels_problems(f"{where}.levels", pick.get(F_LEVELS), strict=strict)
+    problems += _score_parts_problems(f"{where}.score_parts", pick.get(F_SCORE_PARTS), strict=strict)
+    problems += _rank_reason_problems(f"{where}.rank_reason", pick.get(F_RANK_REASON),
+                                      pick.get(F_SCORE_PARTS), strict=strict)
+    return problems
+
+
+def _value_problems(at: str, entry: Mapping) -> list[str]:
+    if F_VALUE not in entry:
+        return [f"{at}.value is missing"]
+    if not _is_value(entry[F_VALUE]):
+        return [f"{at}.value must be a finite number, text of at most {MAX_TEXT_LEN} "
+                f"characters or null, not {entry[F_VALUE]!r}"]
+    return []
+
+
+def _score_parts_problems(at: str, parts: Any, *, strict: bool) -> list[str]:
+    """The parts of a row's score: each a label, a value, its points and the most it could add."""
+    if parts is None:
+        return []
+    if not isinstance(parts, list) or len(parts) > MAX_SCORE_PARTS:
+        return [f"{at} must be a list of at most {MAX_SCORE_PARTS} parts or null, not {parts!r}"]
+    problems, labels = [], []
+    for k, part in enumerate(parts):
+        where = f"{at}[{k}]"
+        if not isinstance(part, Mapping):
+            problems.append(f"{where} is not a JSON object")
+            continue
+        if strict:
+            problems += _unknown_keys(part, PART_FIELDS, f"{where}.")
+        if not _is_label(part.get(F_LABEL)):
+            problems.append(f"{where}.label must be text of 1 to {MAX_TEXT_LEN} characters, not {part.get(F_LABEL)!r}")
+        else:
+            labels.append(part[F_LABEL])
+        problems += _value_problems(where, part)
+        points, possible = part.get(F_POINTS), part.get(F_POSSIBLE)
+        if not (_is_number(possible) and possible > 0):
+            problems.append(f"{where}.possible must be a finite number above 0, not {possible!r}")
+        if not (_is_number(points) and points >= 0):
+            problems.append(f"{where}.points must be a finite number of 0 or more, not {points!r}")
+        elif _is_number(possible) and points > possible + PART_SLACK:
+            problems.append(f"{where}.points {points} is above possible {possible}")
+    if len(set(labels)) != len(labels):
+        problems.append(f"{at}: each part needs its own label")
+    return problems
+
+
+def _rank_reason_problems(at: str, reason: Any, parts: Any, *, strict: bool) -> list[str]:
+    """Why a row ranks above the next one, and the label of what decides it."""
+    if reason is None:
+        return []
+    if not isinstance(reason, Mapping):
+        return [f"{at} must be a JSON object with text, decides and tie_break, or null, not {reason!r}"]
+    problems = _unknown_keys(reason, RANK_REASON_FIELDS, f"{at}.") if strict else []
+    if not _is_label(reason.get(F_TEXT)):
+        problems.append(f"{at}.text must be text of 1 to {MAX_TEXT_LEN} characters, not {reason.get(F_TEXT)!r}")
+    known = [p.get(F_LABEL) for p in parts if isinstance(p, Mapping)] if isinstance(parts, list) else []
+    tie = reason.get(F_TIE_BREAK)
+    if tie is not None:
+        if not isinstance(tie, Mapping):
+            problems.append(f"{at}.tie_break must be a JSON object with label and value, or null, not {tie!r}")
+        else:
+            if strict:
+                problems += _unknown_keys(tie, ENTRY_FIELDS, f"{at}.tie_break.")
+            if not _is_label(tie.get(F_LABEL)):
+                problems.append(f"{at}.tie_break.label must be text of 1 to {MAX_TEXT_LEN} characters, "
+                                f"not {tie.get(F_LABEL)!r}")
+            else:
+                known.append(tie[F_LABEL])
+            problems += _value_problems(f"{at}.tie_break", tie)
+    decides = reason.get(F_DECIDES)
+    if decides is not None and decides not in known:
+        problems.append(f"{at}.decides must be null or the label of one of the row's score_parts "
+                        f"or of its tie_break, not {decides!r}")
     return problems
 
 
@@ -1030,6 +1124,14 @@ def _row(pick: Mapping) -> dict:
             row[key] = pick[key]
         elif key == F_LEVELS and pick.get(key) is not None:
             row[key] = {k: pick[key][k] for k in LEVEL_FIELDS if pick[key].get(k) is not None}
+        elif key == F_SCORE_PARTS and pick.get(key) is not None:
+            row[key] = [{k: part.get(k) for k in PART_FIELDS} for part in pick[key]]
+        elif key == F_RANK_REASON and pick.get(key) is not None:
+            reason = pick[key]
+            row[key] = {k: reason.get(k) for k in (F_TEXT, F_DECIDES)}
+            if reason.get(F_TIE_BREAK) is not None:
+                row[key][F_TIE_BREAK] = {F_LABEL: reason[F_TIE_BREAK][F_LABEL],
+                                         F_VALUE: reason[F_TIE_BREAK].get(F_VALUE)}
         elif pick.get(key) is not None:
             row[key] = pick[key]
     row[F_METRICS] = [_entry(e, METRIC_OPTIONAL) for e in pick[F_METRICS]]
