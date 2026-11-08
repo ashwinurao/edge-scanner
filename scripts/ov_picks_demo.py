@@ -21,7 +21,9 @@ demo port 7787 by default, and makes no network call.
 --demo-market adds a linked chart and a linked news window, fed with made-up bars and
 headlines (every headline says "Demo"), so a click on a past day's ticker can be seen
 end to end (the calendar, Ash, 2026-11-07). Intraday bars run 04:00-20:00 ET, so the EXT
-toggle and the lighter extended hours show too. It also makes up each row's 09:30 ET bar
+toggle and the lighter extended hours show too. Each day's 1-minute bars are seeded by the day,
+and the longer intraday frames are rolled up from them, so a 5m chart and the chart's ORB studies
+agree (Ash, 2026-11-08). It also makes up each row's 09:30 ET bar
 from the row's levels, so the columns that fill after the open (scanner/ov_picks_live.py)
 show values and tones. Without it the demo has no data feed and those cells stay blank.
 Started inside the 09:30 minute, it also makes up the minute so far, growing towards that
@@ -106,12 +108,29 @@ class _DemoFeed:
 
     def get_bars_range(self, symbol: str, tf: str, start: date, end: date):
         import pandas as pd
+        if tf in _STEP and tf != "1Min":
+            # Longer intraday frames are the 1-minute walk rolled up, so a 5m chart and
+            # the chart's 1-minute ORB studies (dashboard-v2/src/lib/orbStudy.ts) agree.
+            m = self.get_bars_range(symbol, "1Min", start, end)
+            et = m.index.tz_convert(ET)
+            first = et.normalize() + pd.Timedelta(hours=_ET_FIRST[0], minutes=_ET_FIRST[1])
+            slot = ((et - first) // pd.Timedelta(minutes=_STEP[tf])) * pd.Timedelta(minutes=_STEP[tf]) + first
+            g = m.groupby(slot.tz_convert(timezone.utc))
+            out = pd.DataFrame({"open": g["open"].first(), "high": g["high"].max(), "low": g["low"].min(),
+                                "close": g["close"].last(), "volume": g["volume"].sum()})
+            out.index.name = "timestamp"
+            return out
         rng = random.Random(zlib.crc32(f"{symbol}|{tf}".encode()))
-        price = 40 + rng.random() * 160
+        price = base = 40 + rng.random() * 160
         stamps, rows = [], []
         d = start
         while d <= end:
             if d.weekday() < 5 and (tf != "1Week" or d.weekday() == 0):
+                if tf == "1Min":
+                    # Each day's minutes are seeded by the day, so every request that covers
+                    # a day draws the same bars, however far back it starts.
+                    rng = random.Random(zlib.crc32(f"{symbol}|{tf}|{d.isoformat()}".encode()))
+                    price = base * (1 + rng.gauss(0, 0.03))
                 if tf in _STEP:
                     t = datetime(d.year, d.month, d.day, *_ET_FIRST, tzinfo=ET)
                     last = datetime(d.year, d.month, d.day, *_ET_LAST, tzinfo=ET)

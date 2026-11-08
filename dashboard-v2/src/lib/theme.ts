@@ -67,7 +67,7 @@ export interface ChartPalette {
   bg: string; text: string; grid: string; border: string
   up: string; down: string; upSoft: string; downSoft: string; accent: string; dim: string
   vwap: string; ema9: string; ema21: string; sma50: string; sma100: string; sma200: string; pd: string; pm: string
-  rth: string; dayLine: string
+  rth: string; dayLine: string; or1: string; or2: string
 }
 export function readChartPalette(): ChartPalette {
   const v = (name: string) => resolveColor(`var(${name})`)
@@ -78,5 +78,6 @@ export function readChartPalette(): ChartPalette {
     vwap: v('--ind-vwap'), ema9: v('--ind-ema9'), ema21: v('--ind-ema21'),
     sma50: v('--ind-sma50'), sma100: v('--ind-sma100'), sma200: v('--ind-sma200'), pd: v('--ind-pd'), pm: v('--ind-pm'),
     rth: v('--chart-rth'), dayLine: v('--chart-dayline'),
+    or1: v('--ind-or1'), or2: v('--ind-or2'),
   }
 }
