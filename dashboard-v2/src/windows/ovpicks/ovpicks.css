@@ -76,6 +76,12 @@
 .ovp-table td.ovp-tone-caution { color: var(--warn); box-shadow: inset 0 0 0 999px color-mix(in oklab, var(--warn) 12%, transparent); }
 .ovp-table td.ovp-tone-bad { color: var(--down-text); box-shadow: inset 0 0 0 999px color-mix(in oklab, var(--down) 14%, transparent); }
 .ovp-table td.ovp-wait { color: var(--text-faint); }
+/* The first minute so far (scanner/ov_picks_live.py; Ash, 2026-11-08): a small pulsing dot
+   before the value until the 09:30 bar replaces it. */
+.ovp-dot { display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; vertical-align: 1px;
+  background: var(--accent, #3b82f6); animation: ovp-pulse 1.2s ease-in-out infinite; }
+@keyframes ovp-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .ovp-dot { animation: none; } }
 .ovp-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 6px 10px 0; font-size: 10.5px; }
 .ovp-key span { display: inline-flex; align-items: center; gap: 4px; }
 .ovp-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }

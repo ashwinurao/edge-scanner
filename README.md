@@ -293,12 +293,18 @@ scanner shows the day's picks. It never writes that folder.
   levels, a tile with the note for each explained number, the first group of fields, and every
   field grouped behind "All fields". This repo holds no research numbers: the module decides
   what each value means.
-- **Columns that fill after the open.** A column the module marks `live` is filled by the
-  scanner from the day's 09:30 ET minute bar: the first minute's range in ATR, and where the
-  open sits against the pre-market range. The route asks Alpaca once per day shown, for that
-  day's ranked tickers, after 09:31 ET, and keeps the answer (the owner's go, 2026-11-07;
-  `scanner/ov_picks_live.py`). Before 09:31 ET, without an Alpaca feed, or when the request
-  fails, the cells stay blank and say why. Past days fill the same way, from that day's bar.
+- **Columns that fill from the open.** A column the module marks `live` is filled by the
+  scanner from the day's 09:30 ET minute: the first minute's range in ATR, and where the open
+  sits against the pre-market range. During the minute they show the minute so far and update
+  every 2 seconds, so OR1 or OR2 can be chosen right after 09:31 (the owner's request,
+  2026-11-08): while the window is open, the route asks Alpaca for a snapshot of the day's
+  ranked tickers at most every 2 seconds, and the window refreshes every 2 seconds. The
+  snapshot's day bar counts only regular-hours trades, so before 09:31 it is the first minute.
+  From 09:31:03 ET the minute's bar replaces it: the route asks Alpaca once per day shown, for
+  that day's ranked tickers, and keeps the answer (the owner's go, 2026-11-07). Both are REST
+  requests through the scanner's own data client, never a websocket
+  (`scanner/ov_picks_live.py`). Before 09:30 ET, without an Alpaca feed, or when a request
+  fails, the cells stay blank and say why. Past days fill from that day's bar.
 - A name outside the scanner's universe gets no live bars and no setups. The universe is built at
   startup and a watchlist does not add to it, so the window marks that name "no setups".
 - Each trading morning, when the picks freeze, the scanner fills a watchlist called "OV picks"
