@@ -299,11 +299,13 @@ seconds; **Refresh** reads it now. The code is in `dashboard-v2/src/windows/ovpi
 | **SETTLED SAME** / **SETTLED DIFF** | The 09:26 ET re-check made the same top picks and the same ranked list, or bars that came in late for 09:24 would have changed them. The frozen list always stands |
 
 **The table** has one row per ranked name, in rank order, at most 100. The top picks come first:
-their rows are tinted, have an accent bar and a **top** badge, and a line separates them from the
+their rows are tinted and have an accent bar, and a dashed orange line separates them from the
 rest of the list.
 
-- **Ticker** comes first and stays in view when the table scrolls sideways. Badges beside it:
-  **top** for a top pick, **AMC**
+- **Ticker** comes first and stays in view when the table scrolls sideways. Before it, the
+  **rank badge** (the owner's layout "C1", 2026-11-08): gold for the module's first pick, green
+  for its other top picks, an outline for the two names after them, and plain for the rest. The
+  first pick's row is tinted gold. Badges after it: **AMC**
   (reported after the prior close) or **BMO** (reports before this open) for an earnings label,
   and **no setups** for a name outside the scanner's universe (it gets no live bars and no
   setups, but charts work).
@@ -315,6 +317,21 @@ rest of the list.
   good (green), caution (amber) or a warning (red), and say in one line what it means. Hover a
   cell to read that line. A key under the table lists the colours in use. The module decides
   the colours from its research; the window only shows them.
+- **Score parts** (the owner's layout "C1", 2026-11-08). When the module sends what made up
+  each score, the parts follow the other columns, one column each, under the module's labels.
+  A cell shows the part's value as the module wrote it, and in its top-left corner the part's
+  score out of 100: its points against the most it can add, 100 only when full. A full part is
+  faint green with a green 100, a part short of full is amber, and a part that lost a quarter
+  of its points or more is orange. A blue ring marks the part that puts the name ahead of the
+  next one, as the module says. Every other part that gives the name more points than the next
+  name has a green ▲ in its top-right corner, and one that gives fewer a red ▼, so a lead made
+  by several parts shows them all (round 4, "A1 + B1 + H1"). Each part's header says where full
+  points start ("full ≥ …"); hover it for where the part starts scoring and the most points it
+  can add. Hover a cell for its score, its points and what it gives against the next name. The
+  key under the table lists the badges and these colours. The window works nothing out itself: the
+  module sends the parts, their points and the reason (`ov_picks/CONTRACT.md`, "Score parts and
+  rank reason"; `dashboard-v2/src/windows/ovpicks/parts.ts`). In a narrow window, scroll sideways
+  to see them all.
 - **Columns that fill after the open** have "09:31" under their header. The scanner fills them
   from the day's 09:30 ET minute bar: the first minute's range in ATR, and the open against the
   pre-market range (**▲ above** the pre-market high, **▼ below** its low, or **inside**). Until
@@ -569,7 +586,7 @@ filters more to choose from but costs more CPU per minute and a longer first dow
 | `scripts/compare_universes.py` | Builds two universes and explains every difference |
 | `start_scanner.bat`, `start_scanner.sh` | Launchers for Windows and for macOS / Linux (section 3) |
 | `restart_scanner.bat` | Stops a running scanner and starts it again (Windows) |
-| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`; a preview: `--sample preview --at "2026-11-05 09:14:30"`; past days: `--sample past_days --at "2026-11-05 10:40" --demo-market`, which adds a linked chart and news window on made-up bars and headlines; coloured cells, the columns that fill after the open and the trade card: `--sample meanings --at "2026-11-05 10:40" --demo-market`) |
+| `scripts/ov_picks_demo.py` | The dashboard on a sample OV picks day, at a fake time, on 127.0.0.1:7787, without keys or market data (`--sample frozen`, `--at "2026-11-05 09:25:05"`; a preview: `--sample preview --at "2026-11-05 09:14:30"`; past days: `--sample past_days --at "2026-11-05 10:40" --demo-market`, which adds a linked chart and news window on made-up bars and headlines; coloured cells, the columns that fill after the open and the trade card: `--sample meanings --at "2026-11-05 10:40" --demo-market`; rank badges and score parts: `--sample score_parts --at "2026-11-05 10:40" --demo-market`) |
 
 ### build_universe.py
 

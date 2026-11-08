@@ -62,6 +62,32 @@ export interface OvBar {
   close: number
 }
 
+/** One part of a row's score, as the module writes it (ov_picks/CONTRACT.md, "Score parts
+ *  and rank reason"). The window draws it and works nothing out. */
+export interface OvPart {
+  label: string
+  /** what the part scored, as the window shows it */
+  value: number | string | null
+  /** the points the part added to the score */
+  points: number
+  /** the most points the part can add */
+  possible: number
+  /** where the part starts scoring, as the window shows values (no points at or below it) */
+  zero_at?: string
+  /** where the part scores full points, as the window shows values */
+  full_at?: string
+  /** the points the part gives against the next row: positive puts this row ahead */
+  vs_next?: number
+}
+
+/** Why a row ranks above the next one, as the module writes it. */
+export interface OvRankReason {
+  text: string
+  /** the label of the part, or of the tie-break, that puts the row above the next one */
+  decides: string | null
+  tie_break?: { label: string; value: number | string | null } | null
+}
+
 /** One row of the day's ranked list (ov_picks/CONTRACT.md, "Each row of picks"). */
 export interface OvPick {
   rank: number
@@ -82,6 +108,10 @@ export interface OvPick {
   levels?: OvLevels
   /** the 09:30 ET bar: null until it is known; absent on rows without a live column */
   first_minute?: OvBar | null
+  /** what made up the score, when the module sends it */
+  score_parts?: OvPart[]
+  /** why the row ranks above the next one; absent on the last row */
+  rank_reason?: OvRankReason
 }
 
 export interface OvPicksDay {

@@ -86,6 +86,8 @@ Each row of `picks`:
 | `details` | list of entries | The full row, for a click on it: at most 200 entries (`MAX_DETAILS`), in the order the module writes them. |
 | `name` | text, optional | The company's name, at most 200 characters. Left out when unknown. |
 | `levels` | object, optional | The row's price levels (below). Left out when the module has none. |
+| `score_parts` | list, optional | The parts that make up the row's score (below). Left out when the module has none. |
+| `rank_reason` | object, optional | Why the row ranks above the next one (below). Left out when the module has none. |
 
 Each entry of `metrics` and `details` is an object with two fields, plus the optional
 fields below:
@@ -158,6 +160,37 @@ Each band has these optional fields (`BAND_FIELDS`):
 | `note` | text or null | One line on what the value means, at most 200 characters. |
 
 A band with no `min`, `max` or `is` takes any value: put it last, as the default.
+
+#### Score parts and rank reason
+
+The owner wants to see what made up each score and why each name ranks above the next, at a
+glance for the top names (Ash, project thread, 2026-11-08). The module works both out and
+writes them as text and numbers; Edge Scanner draws them as written and never works out a
+part, a point or a reason itself.
+
+`score_parts` is a list of at most 12 parts (`MAX_SCORE_PARTS`), in the order the window
+shows them. Each part has these fields (`PART_FIELDS`); the last three are optional and are
+left out when the module has no value for them (the owner's details, 2026-11-08):
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `label` | text | The part's name. Not blank, at most 200 characters, and different from the row's other parts. |
+| `value` | number, text or null | What the part scored, as the window shows it, like an entry's `value`. |
+| `points` | number | The points the part added to the score. Finite, 0 or more, not above `possible`. |
+| `possible` | number | The most points the part can add. Finite, above 0. A part is full when `points` equals it. |
+| `zero_at` | text, optional | The value at or below which the part adds no points, as the window shows it. At most 200 characters. |
+| `full_at` | text, optional | The value from which the part adds all its points, as the window shows it. At most 200 characters. |
+| `vs_next` | number, optional | The points the part gives the row against the next row: above 0 it helps the row rank above the next one, below 0 it works against it. Finite. Left out when the two rows are not ranked by score. |
+
+`rank_reason` has these fields (`RANK_REASON_FIELDS`):
+
+| Field | Type | Allowed values and rules |
+|---|---|---|
+| `text` | text | One sentence on why the row ranks above the next one. Not blank, at most 200 characters. |
+| `decides` | text or null | The label of the part in `score_parts`, or of the `tie_break`, that puts the row above the next one. Null when nothing does, as on the last row. |
+| `tie_break` | object or null | The value the ranking uses on equal scores, as an entry `{label, value}`. |
+
+A few words of the reason, for a column in the window, go in `metrics` like any other column.
 
 Rules between fields:
 
@@ -336,9 +369,9 @@ bad entry is left out with a warning, and the other entries still read.
   means. Version 1 gained the preview file and the `preview` job without a new version:
   no existing record changed, and a reader that predates them keeps the `preview` status
   entry as written. It gained the history file the same way: a reader that predates it
-  never opens `history/`. It gained the optional fields of "What a value means" (2026-11-07)
-  the same way: a file without them is unchanged, and a reader that predates them ignores
-  them. A version that adds a field older files lack adds an upgrade step to
+  never opens `history/`. It gained the optional fields of "What a value means" (2026-11-07),
+  and `score_parts` and `rank_reason` (2026-11-08), the same way: a file without them is
+  unchanged, and a reader that predates them ignores them. A version that adds a field older files lack adds an upgrade step to
   `_UPGRADES` in `ov_picks/contract.py`, so saved days keep loading (spec US67;
   CONTRIBUTING.md "Saved work survives").
 
@@ -365,4 +398,5 @@ passes the writer's checks and reads as described.
 | `warming` | 08:50 ET: `status.json` says `WARMING`, and there is no picks file yet. |
 | `past_days` | The `shadow` sample's day, plus OV's past days in `history/`: 2026-11-03 from `ov_rebuild` and 2026-11-04 from `ov_live`, 6 rows each, the first 4 marked `top`. |
 | `meanings` | The owner's layout "C1 + E1" (2026-11-07): the `shadow` sample's day with 8 rows, the first 4 marked `top`, and 12 metrics with tones, notes and two live columns (`first_minute_range_atr`, `open_vs_pm_range`); every row has a name, levels, and details in groups. Plus one past day in `history/`, 2026-11-04 from `ov_rebuild`. The notes say "Sample note" and the band edges are made up. |
+| `score_parts` | The owner's layout "C1" (2026-11-08): the `meanings` day with 9 metrics, led by Score and "Ahead of next" (coloured by the lead, with the reason as its note), and on every row six made-up score parts; every row but the last has a rank reason, one decided by a tie-break. The labels, points and reasons are made up. |
 | `preview` | 09:14 ET in the shadow run: `status.json` says the warmup is `DATA_READY` and the preview job `PREVIEWED`; `preview.json` is as of 09:14 ET with 6 rows, the first 4 marked `top`. No picks file yet. |

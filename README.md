@@ -256,7 +256,12 @@ contract needs the same change in the module's repo ([CONTRIBUTING.md](CONTRIBUT
 scanner shows the day's picks. It never writes that folder.
 
 - The **OV picks** window (Add window menu) shows the day's ranked list in rank order, the top
-  picks highlighted, in the columns the module sends. A click on a row sends its ticker to the
+  picks highlighted, in the columns the module sends. Each rank is a coloured badge (gold for the
+  first pick), and when the module sends what made up each score, its parts follow as coloured
+  cells, with the part that puts a name ahead of the next one ringed (the owner's layout "C1",
+  2026-11-08). Each part cell has its score out of 100 in the corner and an arrow when it gives
+  more or fewer points than the next name, and each part's header says where full points start
+  (round 4, "A1 + B1 + H1"). A click on a row sends its ticker to the
   window's linked charts and news; the ▸ arrow shows all of its details.
   It also shows the warmup, LATE, settled and shadow flags, the check against OV, the week's new
   listings, and when the market is closed, the next scan. It is display only: it places no orders.

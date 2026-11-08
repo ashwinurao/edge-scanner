@@ -953,6 +953,8 @@ SAMPLE_CASES = {
     "past_days": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 6, c.SETTLED_SAME, c.PENDING),
     # The owner's layout (2026-11-07): tones, notes, live columns, groups and levels, plus one past day.
     "meanings": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 8, c.SETTLED_SAME, c.PENDING),
+    # The owner's layout "C1" (2026-11-08): the meanings day with made-up score parts and rank reasons.
+    "score_parts": (True, True, False, c.READY, c.EARNINGS_AVAILABLE, TOP, 8, c.SETTLED_SAME, c.PENDING),
 }
 # The warmup state of each sample without picks: still warming, or ready with a preview showing.
 NO_PICKS_WARMUP = {"warming": c.WARMING, "preview": c.DATA_READY}
@@ -1196,3 +1198,122 @@ def test_the_meanings_sample_shows_every_optional_field_on_a_day_and_a_past_day(
         assert live == [c.LIVE_FIRST_MINUTE_RANGE_ATR, c.LIVE_OPEN_VS_PM_RANGE]
         assert {m.get("tone") for p in rows for m in p["metrics"]} >= set(c.TONES) - {c.TONE_BAD}
         assert all(d.get("group") for p in rows for d in p["details"])
+
+
+# ---------------------------------------------------------------- score parts and rank reason (2026-11-08)
+# The owner wants to see what made up each score and why each name ranks above the next (Ash,
+# project thread, 2026-11-08). Both optional; the labels and numbers here are made up.
+
+def _parts(*points):
+    return [{"label": f"Part {k}", "value": f"{k}.0x", "points": p, "possible": 10.0}
+            for k, p in enumerate(points, start=1)]
+
+
+def _reasoned_record():
+    rec = _meaningful_record()
+    for i, pick in enumerate(rec["picks"]):
+        pick["score_parts"] = _parts(10.0, 10.0 - i)
+        pick["rank_reason"] = {"text": "Made-up reason.", "decides": "Part 2",
+                               "tie_break": {"label": "Made-up tie-break", "value": "$1M"}}
+    rec["picks"][-1]["rank_reason"].update(decides=None)
+    return rec
+
+
+def test_the_score_parts_sample_has_parts_on_every_row_and_a_reason_on_all_but_the_last():
+    rows = c.read_day(SAMPLES / "score_parts", DAY)["picks"]
+    assert all(len(p["score_parts"]) == 6 for p in rows)
+    assert all(sum(x["points"] for x in p["score_parts"]) == pytest.approx(p["score"]) for p in rows)
+    assert all(p["rank_reason"]["text"] for p in rows[:-1]) and "rank_reason" not in rows[-1]
+    labels = {x["label"] for x in rows[0]["score_parts"]}
+    # Each reason is decided by a part or by the tie-break, as on a day when two scores tie.
+    decides = [p["rank_reason"]["decides"] for p in rows[:-1]]
+    assert set(decides) - labels == {"Sample tie-break"}
+    tones = [next(m.get("tone") for m in p["metrics"] if m["label"] == "Ahead of next") for p in rows]
+    assert set(tones) == set(c.TONES) | {None}
+
+
+def test_a_row_with_score_parts_and_a_rank_reason_reads_back_unchanged(tmp_path):
+    rec = _reasoned_record()
+    assert c.validate_picks(rec) == []
+    c.write_picks(tmp_path, rec)
+    rows = c.read_day(tmp_path, DAY)["picks"]
+    assert rows[1]["score_parts"] == _parts(10.0, 9.0)
+    assert rows[1]["rank_reason"] == {"text": "Made-up reason.", "decides": "Part 2",
+                                      "tie_break": {"label": "Made-up tie-break", "value": "$1M"}}
+    assert rows[-1]["rank_reason"]["decides"] is None
+    # The tie-break may decide, as on a day when scores tie.
+    rec["picks"][0]["rank_reason"]["decides"] = "Made-up tie-break"
+    assert c.validate_picks(rec) == []
+
+
+def test_rows_without_score_parts_or_a_rank_reason_read_back_without_them(tmp_path):
+    rec = _reasoned_record()
+    for pick in rec["picks"]:
+        pick.update(score_parts=None, rank_reason=None)
+    rec["picks"][0]["rank_reason"] = {"text": "t", "decides": None, "tie_break": None}
+    assert c.validate_picks(rec) == []
+    c.write_picks(tmp_path, rec)
+    rows = c.read_day(tmp_path, DAY)["picks"]
+    assert "score_parts" not in rows[1] and "rank_reason" not in rows[1]
+    assert rows[0]["rank_reason"] == {"text": "t", "decides": None}
+
+
+@pytest.mark.parametrize("change, words", [
+    (lambda p: p.update(score_parts={"Part 1": 1}), "score_parts must be a list of at most 12 parts"),
+    (lambda p: p.update(score_parts=_parts(*[1.0] * (c.MAX_SCORE_PARTS + 1))), "at most 12 parts"),
+    (lambda p: p["score_parts"][0].update(points=10.5), "points 10.5 is above possible 10.0"),
+    (lambda p: p["score_parts"][0].update(points=-1.0), "points must be a finite number of 0 or more"),
+    (lambda p: p["score_parts"][0].update(points=float("nan")), "points must be a finite number"),
+    (lambda p: p["score_parts"][0].update(possible=0), "possible must be a finite number above 0"),
+    (lambda p: p["score_parts"][0].update(label=" "), "score_parts[0].label must be text"),
+    (lambda p: p["score_parts"][1].update(label="Part 1"), "each part needs its own label"),
+    (lambda p: p["score_parts"][0].update(value=True), "score_parts[0].value must be a finite number"),
+    (lambda p: p["score_parts"][0].pop("value"), "score_parts[0].value is missing"),
+    (lambda p: p["score_parts"][0].update(tone="good"), "score_parts[0].tone is not a field"),
+    (lambda p: p.update(rank_reason="ahead"), "rank_reason must be a JSON object"),
+    (lambda p: p["rank_reason"].update(text=""), "rank_reason.text must be text"),
+    (lambda p: p["rank_reason"].update(short="+1.00"), "rank_reason.short is not a field"),
+    (lambda p: p["rank_reason"].update(text="x" * (c.MAX_TEXT_LEN + 1)), "rank_reason.text must be text"),
+    (lambda p: p["rank_reason"].update(decides="Part 9"), "decides must be null or the label"),
+    (lambda p: p.update(score_parts=None), "decides must be null or the label"),
+    (lambda p: p["rank_reason"].update(tie_break="$1M"), "tie_break must be a JSON object"),
+    (lambda p: p["rank_reason"]["tie_break"].update(label=""), "tie_break.label must be text"),
+    (lambda p: p["rank_reason"]["tie_break"].update(extra=1), "tie_break.extra is not a field"),
+    (lambda p: p["rank_reason"].update(why="x"), "rank_reason.why is not a field"),
+    (lambda p: p["score_parts"][0].update(full_at=0.3), "score_parts[0].full_at must be text"),
+    (lambda p: p["score_parts"][0].update(zero_at=""), "score_parts[0].zero_at must be text"),
+    (lambda p: p["score_parts"][0].update(vs_next="+1"), "score_parts[0].vs_next must be a finite number"),
+    (lambda p: p["score_parts"][0].update(vs_next=float("inf")), "score_parts[0].vs_next must be a finite number"),
+])
+def test_bad_score_parts_or_a_bad_rank_reason_are_refused_by_the_writer(change, words):
+    rec = _reasoned_record()
+    change(rec["picks"][0])
+    problems = c.validate_picks(rec)
+    assert any(words in p for p in problems), problems
+
+
+def test_a_part_with_its_marks_and_its_points_against_the_next_row_reads_back_unchanged(tmp_path):
+    # The owner's details (2026-11-08, "A1 + B1 + H1"): where a part starts and stops scoring,
+    # and what it gives the row against the next one. All made up here.
+    rec = _reasoned_record()
+    rec["picks"][0]["score_parts"][0].update(zero_at="0.1x", full_at="2.0x", vs_next=1.5)
+    rec["picks"][0]["score_parts"][1].update(vs_next=-0.25)
+    rec["picks"][1]["score_parts"][0].update(vs_next=0.0)
+    assert c.validate_picks(rec) == []
+    c.write_picks(tmp_path, rec)
+    rows = c.read_day(tmp_path, DAY)["picks"]
+    assert rows[0]["score_parts"][0] == {"label": "Part 1", "value": "1.0x", "points": 10.0, "possible": 10.0,
+                                         "zero_at": "0.1x", "full_at": "2.0x", "vs_next": 1.5}
+    assert rows[0]["score_parts"][1]["vs_next"] == -0.25
+    assert rows[1]["score_parts"][0]["vs_next"] == 0.0
+    # Left out, or null, they read back without the field.
+    assert set(rows[1]["score_parts"][1]) == {"label", "value", "points", "possible"}
+    rec["picks"][2]["score_parts"][0].update(full_at=None, vs_next=None)
+    assert c.validate_picks(rec) == []
+
+
+def test_a_part_exactly_at_its_most_is_allowed():
+    rec = _reasoned_record()
+    rec["picks"][0]["score_parts"][0].update(points=10.0, possible=10.0)
+    rec["picks"][0]["score_parts"][1].update(points=0.0)
+    assert c.validate_picks(rec) == []
