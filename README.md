@@ -264,7 +264,8 @@ scanner shows the day's picks. It never writes that folder.
   2026-11-08). Each part cell has its score out of 100 in the corner and an arrow when it gives
   more or fewer points than the next name, and each part's header says where full points start
   (round 4, "A1 + B1 + H1"). A click on a row sends its ticker to the
-  window's linked charts and news; the ▸ arrow shows all of its details.
+  window's linked charts and news (a linked 1-minute chart opens on 08:30-11:30 ET); the ▸
+  arrow shows all of its details.
   It also shows the warmup, LATE, settled and shadow flags, the check against OV, the week's new
   listings, and when the market is closed, the next scan. It is display only: it places no orders.
   It reads `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).

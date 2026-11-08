@@ -270,8 +270,9 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
   // The row last sent to the linked windows, marked in this day's list.
   const [sel, setSel] = useState<{ key: string; ticker: string } | null>(null)
   const selTicker = sel?.key === dayKey ? sel.ticker : null
+  // A linked 1-minute chart opens on 08:30-11:30 ET of the day (Ash, 2026-11-08 18:45 UTC).
   const pickFor = (linkDay: string | null) => (ticker: string) => {
-    linkSymbol(win, ticker, null, linkDay)
+    linkSymbol(win, ticker, null, linkDay, 'open')
     setSel({ key: dayKey, ticker })
   }
 

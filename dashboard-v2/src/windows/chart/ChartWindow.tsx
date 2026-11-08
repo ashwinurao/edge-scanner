@@ -15,7 +15,8 @@ import { ORB_VARIANTS, orbDrawing } from '../../lib/orbStudy'
 import { OrbChip, OrbLegend } from './OrbStudy'
 import { useOrbStudy } from './useOrbStudy'
 import { readChartPalette, THEME_EVENT, type ChartPalette } from '../../lib/theme'
-import { useLinkedSymbol, useLinkedAlert, useLinkedDay, linkSymbol } from '../../stores/linkStore'
+import { useLinkedSymbol, useLinkedAlert, useLinkedDay, useLinkedView, linkSymbol } from '../../stores/linkStore'
+import { openViewRange } from '../../lib/openView'
 import { useSetups } from '../../stores/setupsStore'
 import { useScreens } from '../../stores/screensStore'
 import { CompanyLogo, Empty, Field, SymbolInput, Toggle } from '../../components/primitives'
@@ -80,6 +81,9 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
   const symbol = useLinkedSymbol(win, win.symbol)
   // fork: a past day sent from the OV picks window: the bars end on that day (Ash, 2026-11-07).
   const day = useLinkedDay(win)
+  // fork: a name clicked in the OV picks window opens a 1-minute chart on 08:30-11:30 ET
+  // (Ash, 2026-11-08; src/lib/openView.ts). Each click frames it again.
+  const link = useLinkedView(win)
   // A scanner alert is today's, so a past day's chart does not mark it.
   const linkedAlert = useLinkedAlert(win, symbol)
   const selAlert = day ? null : linkedAlert
@@ -257,26 +261,35 @@ export function ChartWindow({ win }: { win: ChartConfig }) {
     }
     // The ORB studies' ranges, entries and exits, drawn with their own labels
     // (src/lib/orbStudy.ts, src/lib/orbPrimitive.ts).
-    r.orb.setDrawing(orbDrawing(orb.days, visibleBars.map(b => toSecET(b.t))))
+    const times = visibleBars.map(b => toSecET(b.t))
+    r.orb.setDrawing(orbDrawing(orb.days, times))
     markers.sort((a, b) => (a.time as number) - (b.time as number))
     r.candles.setMarkers(markers)
 
     // Fit only when a fresh data set arrives (new symbol/timeframe, or the first
     // bars after an empty state). Refreshes and overlay toggles must keep the
     // user's zoom and scroll position. Session frames open on the latest
-    // session (the earlier days are there for the moving averages; scroll left).
-    const fitKey = `${symbol}|${tf}|${win.extended}|${day ?? ''}`
+    // session (the earlier days are there for the moving averages; scroll left),
+    // a 1-minute chart sent from the OV picks window on that day's 08:30-11:30 ET.
+    const openView = link.view === 'open' && tf === '1m'
+    const fitKey = `${symbol}|${tf}|${win.extended}|${day ?? ''}${openView ? `|open ${link.send}` : ''}`
     if (visibleBars.length && (fitKeyRef.current !== fitKey || !hadDataRef.current)) {
+      const open = openView ? openViewRange(times, 60) : null
+      // Held still while today's bars fill the 08:30-11:30 view; otherwise new bars
+      // scroll the chart along as usual (lightweight-charts shifts only while the last
+      // bar is in view).
+      r.chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: !open })
       const n = visibleBars.length
       const lastDay = etDate(visibleBars[n - 1].t)
       let firstOfDay = n - 1
       while (firstOfDay > 0 && etDate(visibleBars[firstOfDay - 1].t) === lastDay) firstOfDay--
-      if (session && firstOfDay > 0) r.chart.timeScale().setVisibleLogicalRange({ from: firstOfDay - 2, to: n + 3 })
+      if (open) r.chart.timeScale().setVisibleLogicalRange(open)
+      else if (session && firstOfDay > 0) r.chart.timeScale().setVisibleLogicalRange({ from: firstOfDay - 2, to: n + 3 })
       else r.chart.timeScale().fitContent()
       fitKeyRef.current = fitKey
     }
     hadDataRef.current = visibleBars.length > 0
-  }, [visibleBars, bars, daily, win.overlays, session, symbol, tf, win.extended, selAlert, day, orb.days])
+  }, [visibleBars, bars, daily, win.overlays, session, symbol, tf, win.extended, selAlert, day, orb.days, link.view, link.send])
 
   const set = (patch: Partial<ChartConfig>) => useScreens.getState().updateWindow(win.id, patch)
   const toggleOverlay = (k: keyof ChartOverlays) => set({ overlays: { ...win.overlays, [k]: !win.overlays[k] } })

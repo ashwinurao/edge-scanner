@@ -3,6 +3,9 @@ import type { Alert, LinkColor, WindowBase } from '../types'
 import { useScreens } from './screensStore'
 
 type Group = Exclude<LinkColor, 'none'>
+/** fork: how a linked chart should frame the symbol it is sent. 'open' = 08:30-11:30 ET on its
+ *  last day, sent by the OV picks window (src/lib/openView.ts); null = the chart's usual view. */
+export type LinkView = 'open' | null
 
 interface LinkState {
   symbols: Record<Group, string | null>
@@ -15,7 +18,11 @@ interface LinkState {
    *  charts then end on that day and news ends at its 16:00 ET close. Any other click
    *  sends no day, so the group goes back to live. */
   days: Record<Group, string | null>
-  setSymbol(color: Group, sym: string | null, day?: string | null): void
+  /** fork: the view sent with the symbol (Ash, 2026-11-08), and a count of sends, so a second
+   *  click on the same name frames it again. */
+  views: Record<Group, LinkView>
+  sends: Record<Group, number>
+  setSymbol(color: Group, sym: string | null, day?: string | null, view?: LinkView): void
   setAlert(color: Group, alert: Alert | null): void
 }
 
@@ -23,8 +30,15 @@ export const useLinks = create<LinkState>()(set => ({
   symbols: { red: null, green: null, blue: null, yellow: null, purple: null },
   alerts: { red: null, green: null, blue: null, yellow: null, purple: null },
   days: { red: null, green: null, blue: null, yellow: null, purple: null },
-  setSymbol(color, sym, day = null) {
-    set(s => ({ symbols: { ...s.symbols, [color]: sym ? sym.toUpperCase() : null }, days: { ...s.days, [color]: sym ? day : null } }))
+  views: { red: null, green: null, blue: null, yellow: null, purple: null },
+  sends: { red: 0, green: 0, blue: 0, yellow: 0, purple: 0 },
+  setSymbol(color, sym, day = null, view = null) {
+    set(s => ({
+      symbols: { ...s.symbols, [color]: sym ? sym.toUpperCase() : null },
+      days: { ...s.days, [color]: sym ? day : null },
+      views: { ...s.views, [color]: sym ? view : null },
+      sends: { ...s.sends, [color]: s.sends[color] + 1 },
+    }))
   },
   setAlert(color, alert) {
     set(s => ({ alerts: { ...s.alerts, [color]: alert } }))
@@ -44,6 +58,14 @@ export function useLinkedDay(win: WindowBase): string | null {
   return useLinks(s => (win.link === 'none' ? null : s.days[win.link]))
 }
 
+/** fork: the view the window's link group was sent with its symbol, and how many sends the
+ *  group has had (a new send frames the chart again). An unlinked window has neither. */
+export function useLinkedView(win: WindowBase): { view: LinkView; send: number } {
+  const view = useLinks(s => (win.link === 'none' ? null : s.views[win.link]))
+  const send = useLinks(s => (win.link === 'none' ? 0 : s.sends[win.link]))
+  return { view, send }
+}
+
 /** The selected alert of the window's link group, only while it is for `symbol`. */
 export function useLinkedAlert(win: WindowBase, symbol: string | null): Alert | null {
   const a = useLinks(s => (win.link === 'none' ? null : s.alerts[win.link]))
@@ -51,11 +73,12 @@ export function useLinkedAlert(win: WindowBase, symbol: string | null): Alert | 
 }
 
 /** A window "publishes" a symbol: drives its link group, or (when unlinked) just its own config.
- *  fork: `day` (YYYY-MM-DD) sends a past day with it; without one the group is live. */
-export function linkSymbol(win: WindowBase, sym: string, ownKey: 'symbol' | null = 'symbol', day: string | null = null) {
+ *  fork: `day` (YYYY-MM-DD) sends a past day with it; without one the group is live. `view`
+ *  asks linked charts to frame it a set way (LinkView). */
+export function linkSymbol(win: WindowBase, sym: string, ownKey: 'symbol' | null = 'symbol', day: string | null = null, view: LinkView = null) {
   const s = sym.toUpperCase()
   if (win.link !== 'none') {
-    useLinks.getState().setSymbol(win.link, s, day)
+    useLinks.getState().setSymbol(win.link, s, day, view)
   } else if (ownKey) {
     useScreens.getState().updateWindow(win.id, { [ownKey]: s } as Record<string, unknown>)
   }
