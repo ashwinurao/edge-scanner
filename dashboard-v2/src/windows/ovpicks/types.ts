@@ -72,6 +72,12 @@ export interface OvPart {
   points: number
   /** the most points the part can add */
   possible: number
+  /** where the part starts scoring, as the window shows values (no points at or below it) */
+  zero_at?: string
+  /** where the part scores full points, as the window shows values */
+  full_at?: string
+  /** the points the part gives against the next row: positive puts this row ahead */
+  vs_next?: number
 }
 
 /** Why a row ranks above the next one, as the module writes it. */

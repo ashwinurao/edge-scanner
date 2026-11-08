@@ -169,7 +169,8 @@ writes them as text and numbers; Edge Scanner draws them as written and never wo
 part, a point or a reason itself.
 
 `score_parts` is a list of at most 12 parts (`MAX_SCORE_PARTS`), in the order the window
-shows them. Each part has exactly these fields (`PART_FIELDS`):
+shows them. Each part has these fields (`PART_FIELDS`); the last three are optional and are
+left out when the module has no value for them (the owner's details, 2026-11-08):
 
 | Field | Type | Allowed values and rules |
 |---|---|---|
@@ -177,6 +178,9 @@ shows them. Each part has exactly these fields (`PART_FIELDS`):
 | `value` | number, text or null | What the part scored, as the window shows it, like an entry's `value`. |
 | `points` | number | The points the part added to the score. Finite, 0 or more, not above `possible`. |
 | `possible` | number | The most points the part can add. Finite, above 0. A part is full when `points` equals it. |
+| `zero_at` | text, optional | The value at or below which the part adds no points, as the window shows it. At most 200 characters. |
+| `full_at` | text, optional | The value from which the part adds all its points, as the window shows it. At most 200 characters. |
+| `vs_next` | number, optional | The points the part gives the row against the next row: above 0 it helps the row rank above the next one, below 0 it works against it. Finite. Left out when the two rows are not ranked by score. |
 
 `rank_reason` has these fields (`RANK_REASON_FIELDS`):
 

@@ -250,7 +250,16 @@ BAND_FIELDS = (F_MIN, F_MAX, F_IS, F_TONE, F_NOTE)
 # score and the most it could add. Edge Scanner draws the parts and the reason as written.
 F_POINTS = "points"
 F_POSSIBLE = "possible"
-PART_FIELDS = (F_LABEL, F_VALUE, F_POINTS, F_POSSIBLE)
+PART_REQUIRED = (F_LABEL, F_VALUE, F_POINTS, F_POSSIBLE)
+# Optional (owner, 2026-11-08, round 4 "A1 + B1 + H1"): the value at or below which the part
+# scores nothing and the value from which it scores full points, as the window shows them,
+# and the points the part gives the row against the next row (positive helps, negative
+# hurts; null when the ranking between them is not by score).
+F_ZERO_AT = "zero_at"
+F_FULL_AT = "full_at"
+F_VS_NEXT = "vs_next"
+PART_OPTIONAL = (F_ZERO_AT, F_FULL_AT, F_VS_NEXT)
+PART_FIELDS = PART_REQUIRED + PART_OPTIONAL
 MAX_SCORE_PARTS = 12
 # Float slack when a part's points are checked against its most.
 PART_SLACK = 1e-9
@@ -658,6 +667,12 @@ def _score_parts_problems(at: str, parts: Any, *, strict: bool) -> list[str]:
             problems.append(f"{where}.points must be a finite number of 0 or more, not {points!r}")
         elif _is_number(possible) and points > possible + PART_SLACK:
             problems.append(f"{where}.points {points} is above possible {possible}")
+        for key in (F_ZERO_AT, F_FULL_AT):
+            if part.get(key) is not None and not _is_label(part[key]):
+                problems.append(f"{where}.{key} must be text of 1 to {MAX_TEXT_LEN} characters or null, "
+                                f"not {part[key]!r}")
+        if part.get(F_VS_NEXT) is not None and not _is_number(part[F_VS_NEXT]):
+            problems.append(f"{where}.vs_next must be a finite number or null, not {part[F_VS_NEXT]!r}")
     if len(set(labels)) != len(labels):
         problems.append(f"{at}: each part needs its own label")
     return problems
@@ -1125,7 +1140,9 @@ def _row(pick: Mapping) -> dict:
         elif key == F_LEVELS and pick.get(key) is not None:
             row[key] = {k: pick[key][k] for k in LEVEL_FIELDS if pick[key].get(k) is not None}
         elif key == F_SCORE_PARTS and pick.get(key) is not None:
-            row[key] = [{k: part.get(k) for k in PART_FIELDS} for part in pick[key]]
+            row[key] = [{**{k: part.get(k) for k in PART_REQUIRED},
+                         **{k: part[k] for k in PART_OPTIONAL if part.get(k) is not None}}
+                        for part in pick[key]]
         elif key == F_RANK_REASON and pick.get(key) is not None:
             reason = pick[key]
             row[key] = {k: reason.get(k) for k in (F_TEXT, F_DECIDES)}

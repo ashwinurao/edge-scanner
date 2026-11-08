@@ -2,7 +2,9 @@
 // colour instead of words (Ash, project thread, 2026-11-08, round 3 layout "C1": "how can
 // visually call attention to things, without showing so many words"). The module writes
 // the parts, their points and the reason (ov_picks/CONTRACT.md, "Score parts and rank
-// reason"); this file only decides how they look. Plain data, so OvPicksWindow.tsx only
+// reason"); this file only decides how they look. Round 4 (Ash, 2026-11-08, "A1 + B1 + H1")
+// adds each part's score out of 100 in the cell's corner, arrows on every part that differs
+// from the next name, and where full points start in the part's header. Plain data, so OvPicksWindow.tsx only
 // lays it out and tests/ovParts.test.ts can check it.
 import type { OvPart, OvPick } from './types'
 
@@ -27,20 +29,52 @@ export function partHeat(part: OvPart): PartHeat {
   return lost / part.possible >= WELL_SHORT ? 'well-short' : 'short'
 }
 
-/** The points a part lost, as the cell shows them beside its value ("−1.3"), or '' when full. */
-export function lostText(part: OvPart): string {
-  const lost = part.possible - part.points
-  if (lost < FULL_SLACK) return ''
-  return `−${lost < 1 ? lost.toFixed(2) : lost.toFixed(1)}`
+/** The part's score out of 100, as the cell's corner shows it (round 4, "A1"): 100 only when
+ *  full, so a part that lost points never reads as 100 after rounding. */
+export function partScore(part: OvPart): number {
+  if (partHeat(part) === 'full') return 100
+  if (!(part.possible > 0)) return 0
+  return Math.min(99, Math.max(0, Math.round((part.points / part.possible) * 100)))
+}
+
+/** Points against the next name under this are rounding, so they get no arrow. */
+export const ARROW_SLACK = 0.005
+
+export type PartArrow = 'up' | 'down' | null
+
+/** The arrow on a part (round 4, "B1"): up when it gives the name more points than the next
+ *  name, down when fewer. The ringed part needs none: the ring already says it leads. */
+export function partArrow(part: OvPart, decides: boolean): PartArrow {
+  const v = part.vs_next
+  if (decides || typeof v !== 'number' || Math.abs(v) < ARROW_SLACK) return null
+  return v > 0 ? 'up' : 'down'
 }
 
 const pts = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(2))
+const signed = (x: number) => `${x > 0 ? '+' : '−'}${pts(Math.abs(x))}`
 
-/** The cell's tooltip: the part's points, and whether it is what puts the name ahead. */
+/** The cell's tooltip: the part's score and points, and what it gives against the next name. */
 export function partTitle(part: OvPart, decides: boolean): string {
-  const full = part.possible - part.points < FULL_SLACK
-  const head = `${part.label}: ${pts(part.points)} of ${pts(part.possible)} points${full ? ', full' : ''}.`
-  return decides ? `${head} This part puts it ahead of the next name.` : head
+  const lost = part.possible - part.points
+  const head = `${part.label}: ${partScore(part)} of 100, ${pts(part.points)} of ${pts(part.possible)} points`
+    + (partHeat(part) === 'full' ? ', full.' : `, ${pts(lost)} short.`)
+  const v = typeof part.vs_next === 'number' && Math.abs(part.vs_next) >= ARROW_SLACK ? part.vs_next : null
+  if (decides) return `${head} This part puts it ahead of the next name${v !== null ? `: ${signed(v)} points` : ''}.`
+  return v !== null ? `${head} Against the next name: ${signed(v)} points.` : head
+}
+
+/** A part column's header (round 4, "H1"): where full points start, under the label, and the
+ *  part's marks on hover. The module writes the marks; rows of one list share them. */
+export function partHeader(picks: OvPick[], label: string): { full: string | null, title: string } {
+  const part = picks.flatMap(p => p.score_parts ?? []).find(x => x.label === label && x.full_at)
+  const key = "Corner: the part's score out of 100, green when full, amber or orange when short. "
+    + '▲▼: more or fewer points than the next name. Ringed: the part that puts the name ahead of the next one.'
+  if (!part) return { full: null, title: `${label}: a part of OV's score. ${key}` }
+  const zero = part.zero_at ? `No points up to ${part.zero_at}, full` : 'Full'
+  return {
+    full: part.full_at ?? null,
+    title: `${label}: a part of OV's score, up to ${pts(part.possible)} points. ${zero} points from ${part.full_at}. ${key}`,
+  }
 }
 
 /** The rank badge: gold for OV's first pick, green for the other top picks, an outline for

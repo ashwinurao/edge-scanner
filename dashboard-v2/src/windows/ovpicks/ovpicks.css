@@ -156,7 +156,18 @@
 .ovp-part.ovp-part-well-short { --tint: color-mix(in oklab, var(--heat-orange) 24%, transparent); }
 .ovp-table td.ovp-part-well-short { color: var(--heat-orange); font-weight: 600; }
 .ovp-part.ovp-part-decides { --ring: var(--accent); }
-.ovp-lost { margin-left: 2px; font-size: 9px; font-weight: 600; vertical-align: super; line-height: 0; }
+/* Round 4 ("A1 + B1 + H1"): the part's score out of 100 in the top-left corner, an arrow
+   against the next name in the top-right, and where full points start under the header. */
+.ovp-table td.ovp-part { position: relative; padding-top: 11px; }
+.ovp-cs { position: absolute; top: 2px; left: 4px; font-size: 8.5px; font-weight: 700; line-height: 1; }
+.ovp-part-full .ovp-cs { color: var(--up-text); }
+.ovp-part-short .ovp-cs { color: var(--warn); }
+.ovp-part-well-short .ovp-cs { color: var(--heat-orange); }
+.ovp-ar { position: absolute; top: 2px; right: 4px; font-size: 8.5px; line-height: 1; }
+.ovp-ar-up { color: var(--up-text); }
+.ovp-ar-down { color: var(--down-text); }
+.ovp-key .ovp-ar-up, .ovp-key .ovp-ar-down { font-size: 9px; }
+.ovp-table th .ovp-mk { display: block; margin-top: 1px; font-size: 9.5px; font-weight: 600; color: var(--up-text); white-space: nowrap; text-transform: none; letter-spacing: 0; }
 .ovp-key .ovp-rb { margin-right: 0; }
 .ovp-key-sep { color: var(--text-dim); }
 .ovp-sw.ovp-part-full, .ovp-sw.ovp-part-short, .ovp-sw.ovp-part-well-short { background: var(--tint); }

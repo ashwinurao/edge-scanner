@@ -1280,12 +1280,36 @@ def test_rows_without_score_parts_or_a_rank_reason_read_back_without_them(tmp_pa
     (lambda p: p["rank_reason"]["tie_break"].update(label=""), "tie_break.label must be text"),
     (lambda p: p["rank_reason"]["tie_break"].update(extra=1), "tie_break.extra is not a field"),
     (lambda p: p["rank_reason"].update(why="x"), "rank_reason.why is not a field"),
+    (lambda p: p["score_parts"][0].update(full_at=0.3), "score_parts[0].full_at must be text"),
+    (lambda p: p["score_parts"][0].update(zero_at=""), "score_parts[0].zero_at must be text"),
+    (lambda p: p["score_parts"][0].update(vs_next="+1"), "score_parts[0].vs_next must be a finite number"),
+    (lambda p: p["score_parts"][0].update(vs_next=float("inf")), "score_parts[0].vs_next must be a finite number"),
 ])
 def test_bad_score_parts_or_a_bad_rank_reason_are_refused_by_the_writer(change, words):
     rec = _reasoned_record()
     change(rec["picks"][0])
     problems = c.validate_picks(rec)
     assert any(words in p for p in problems), problems
+
+
+def test_a_part_with_its_marks_and_its_points_against_the_next_row_reads_back_unchanged(tmp_path):
+    # The owner's details (2026-11-08, "A1 + B1 + H1"): where a part starts and stops scoring,
+    # and what it gives the row against the next one. All made up here.
+    rec = _reasoned_record()
+    rec["picks"][0]["score_parts"][0].update(zero_at="0.1x", full_at="2.0x", vs_next=1.5)
+    rec["picks"][0]["score_parts"][1].update(vs_next=-0.25)
+    rec["picks"][1]["score_parts"][0].update(vs_next=0.0)
+    assert c.validate_picks(rec) == []
+    c.write_picks(tmp_path, rec)
+    rows = c.read_day(tmp_path, DAY)["picks"]
+    assert rows[0]["score_parts"][0] == {"label": "Part 1", "value": "1.0x", "points": 10.0, "possible": 10.0,
+                                         "zero_at": "0.1x", "full_at": "2.0x", "vs_next": 1.5}
+    assert rows[0]["score_parts"][1]["vs_next"] == -0.25
+    assert rows[1]["score_parts"][0]["vs_next"] == 0.0
+    # Left out, or null, they read back without the field.
+    assert set(rows[1]["score_parts"][1]) == {"label", "value", "points", "possible"}
+    rec["picks"][2]["score_parts"][0].update(full_at=None, vs_next=None)
+    assert c.validate_picks(rec) == []
 
 
 def test_a_part_exactly_at_its_most_is_allowed():

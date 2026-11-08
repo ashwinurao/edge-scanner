@@ -16,7 +16,9 @@
 // groups (Ash, 2026-11-07, layout "C1 + E1"; card.ts, TradeCard.tsx).
 // Each row's rank is a badge (gold for OV's first pick, green for the other top picks), and
 // the parts that made up its score are coloured cells after the columns, so what puts each
-// name above the next reads without words (Ash, 2026-11-08, round 3 layout "C1"; parts.ts).
+// name above the next reads without words (Ash, 2026-11-08, round 3 layout "C1"; parts.ts),
+// with each part's score out of 100, arrows against the next name and where full points start
+// (round 4, "A1 + B1 + H1").
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { usePoll } from '../../lib/usePoll'
 import { DASH } from '../../lib/format'
@@ -26,7 +28,7 @@ import { Empty } from '../../components/primitives'
 import type { OvPick, OvPicksAnswer, OvPicksConfig, OvPicksHistory, OvPicksPreview } from './types'
 import { KIND_RANGE_ATR, fmtCell, hasMeanings, liveKind, metricOf, toneClass } from './card'
 import { FieldList, TradeCard } from './TradeCard'
-import { lostText, partHeat, partLabels, partTitle, rankLooks, rankTitle } from './parts'
+import { partArrow, partHeader, partHeat, partLabels, partScore, partTitle, rankLooks, rankTitle } from './parts'
 import { fetchOvPicks, fetchOvPicksDays, fillOvPicksWatchlist, syncOvPicksWatchlist, watchlistHas } from './api'
 import { OV_PICKS_DAYS_POLL_MS, OV_PICKS_PAST_POLL_MS, OV_PICKS_POLL_MS, OV_PICKS_WATCHLIST_ID } from './defaults'
 import { allWarnings, badges, dayLabel, dayNotes, fmtValue, historyBadges, historyNotes, isPastDay, metricValue, noPastDay, noPicks, previewBadges, previewNotes, routeProblem, smallColumn, topPicks, wholeColumn, whenET, type Note } from './view'
@@ -76,10 +78,11 @@ function ToneKey({ picks }: { picks: OvPick[] }) {
           <span><i className="ovp-rb ovp-rb-top">2</i>top picks</span>
           <span><i className="ovp-rb ovp-rb-next">5</i>next two</span>
           <span className="ovp-key-sep">score parts:</span>
-          <span><i className="ovp-sw ovp-part-full" />full</span>
+          <span><i className="ovp-sw ovp-part-full" />full (corner 100)</span>
           <span><i className="ovp-sw ovp-part-short" />short</span>
           <span><i className="ovp-sw ovp-part-well-short" />well short</span>
           <span><i className="ovp-sw ovp-part-decides" />puts it ahead of the next name</span>
+          <span><span className="ovp-ar-up">▲</span><span className="ovp-ar-down">▼</span>more or fewer points than the next name</span>
           {tones.size > 0 && <span className="ovp-key-sep">columns:</span>}
         </>
       )}
@@ -135,12 +138,14 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
               {l}{kinds[i] && <span className="ovp-when">09:31</span>}
             </th>
           ))}
-          {parts.map((l, k) => (
-            <th key={`part:${l}`} className={`num ovp-parth${k === 0 ? ' ovp-part1' : ''}`}
-              title={`A part of OV's score. Faint: full points; amber or orange: points lost; ringed: the part that puts the name ahead of the next one. Hover a cell for its points.`}>
-              {l}
-            </th>
-          ))}
+          {parts.map((l, k) => {
+            const head = partHeader(picks, l)
+            return (
+              <th key={`part:${l}`} className={`num ovp-parth${k === 0 ? ' ovp-part1' : ''}`} title={head.title}>
+                {l}{head.full && <span className="ovp-mk">full ≥ {head.full}</span>}
+              </th>
+            )
+          })}
         </tr>
       </thead>
       <tbody>
@@ -173,10 +178,12 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
                   const first = k === 0 ? ' ovp-part1' : ''
                   if (!part) return <td key={`part:${l}`} className={`num mono ovp-part${first}`}>{DASH}</td>
                   const ring = decides === l
-                  const lost = lostText(part)
+                  const arrow = partArrow(part, ring)
                   return (
                     <td key={`part:${l}`} className={`num mono ovp-part ovp-part-${partHeat(part)}${ring ? ' ovp-part-decides' : ''}${first}`} title={partTitle(part, ring)}>
-                      {fmtValue(part.value)}{lost && <sup className="ovp-lost">{lost}</sup>}
+                      <span className="ovp-cs">{partScore(part)}</span>
+                      {arrow && <span className={`ovp-ar ovp-ar-${arrow}`} aria-hidden="true">{arrow === 'up' ? '▲' : '▼'}</span>}
+                      {fmtValue(part.value)}
                     </td>
                   )
                 })}

@@ -319,11 +319,16 @@ rest of the list.
   the colours from its research; the window only shows them.
 - **Score parts** (the owner's layout "C1", 2026-11-08). When the module sends what made up
   each score, the parts follow the other columns, one column each, under the module's labels.
-  A cell shows the part's value as the module wrote it, and a small number beside it for the
-  points the part lost ("−5.2"). A full part is faint green, a part short of full is amber, and
-  a part that lost a quarter of its points or more is orange. A blue ring marks the part that
-  puts the name ahead of the next one, as the module says. Hover a cell for its points. The key
-  under the table lists the badges and these colours. The window works nothing out itself: the
+  A cell shows the part's value as the module wrote it, and in its top-left corner the part's
+  score out of 100: its points against the most it can add, 100 only when full. A full part is
+  faint green with a green 100, a part short of full is amber, and a part that lost a quarter
+  of its points or more is orange. A blue ring marks the part that puts the name ahead of the
+  next one, as the module says. Every other part that gives the name more points than the next
+  name has a green ▲ in its top-right corner, and one that gives fewer a red ▼, so a lead made
+  by several parts shows them all (round 4, "A1 + B1 + H1"). Each part's header says where full
+  points start ("full ≥ …"); hover it for where the part starts scoring and the most points it
+  can add. Hover a cell for its score, its points and what it gives against the next name. The
+  key under the table lists the badges and these colours. The window works nothing out itself: the
   module sends the parts, their points and the reason (`ov_picks/CONTRACT.md`, "Score parts and
   rank reason"; `dashboard-v2/src/windows/ovpicks/parts.ts`). In a narrow window, scroll sideways
   to see them all.
