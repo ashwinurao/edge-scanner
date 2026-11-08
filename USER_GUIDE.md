@@ -399,7 +399,12 @@ rest of the list.
 **Click a row** (or focus it and press Enter) to show its ticker in the window's linked charts
 and news, like a watchlist row (the owner's request, 2026-11-07). The row stays marked, so you
 can see which name the charts show. In a window without a link color the click does nothing
-else.
+else. A linked **1-minute chart** opens on 08:30-11:30 ET of the day it shows (the owner's
+request, 2026-11-08; `dashboard-v2/src/lib/openView.ts`). Before 11:30 the view runs on into
+empty space and holds still while the morning's bars fill it in. With extended hours hidden it
+starts at 09:30, and before 08:30 the chart keeps its usual view. Clicking the row again
+frames it again after you scroll or zoom. Other frames, and names sent from any other window
+or typed into the chart, keep the usual view: the latest session.
 
 **Click the ▸ arrow** at the left of a row to open its details under it. Click ▾ to close them.
 One row is open at a time. When the module says what the row's values mean, the details are a
