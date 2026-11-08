@@ -326,12 +326,19 @@ def so_far(snapshots: Any, day: date) -> dict[str, dict[str, Any]]:
     for symbol, snap in snapshots.items():
         daily, trade = getattr(snap, "daily_bar", None), getattr(snap, "latest_trade", None)
         bar_time, last = _et_time(getattr(daily, "timestamp", None)), _et_time(getattr(trade, "timestamp", None))
-        if bar_time is None or last is None or bar_time.date() != day or not start <= last < end:
+        if bar_time is None or last is None or not _bar_of(bar_time, day) or not start <= last < end:
             continue
         bar = _bar({k: getattr(daily, k, None) for k in BAR_FIELDS})
         if bar is not None:
             out[str(symbol)] = {**bar, "as_of": last}
     return out
+
+
+def _bar_of(stamp: datetime, day: date) -> bool:
+    """Whether a day bar stamped `stamp` is `day`'s. Alpaca stamps a day bar at the start of
+    its New York day (05:00 UTC in winter); a stamp at 00:00 UTC of the day counts too, so a
+    change of stamp would not hide the minute so far. A prior day's bar is neither."""
+    return stamp.date() == day or stamp.astimezone(ZoneInfo("UTC")).date() == day
 
 
 def _et_time(stamp: Any) -> Optional[datetime]:

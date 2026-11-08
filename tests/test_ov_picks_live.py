@@ -545,6 +545,14 @@ def test_a_snapshot_that_is_not_the_minute_so_far_is_left_out(snap):
     assert live.so_far({"AAAA": snap}, DAY) == {}
 
 
+def test_a_day_bar_stamped_at_midnight_utc_is_that_days_too():
+    snap = _snap("2026-11-05", 42.9, 43.4, 42.7, 43.1, "2026-11-05 09:30:41")
+    snap.daily_bar.timestamp = datetime(2026, 11, 5, tzinfo=ZoneInfo("UTC"))      # 19:00 ET the day before
+    assert set(live.so_far({"AAAA": snap}, DAY)) == {"AAAA"}
+    snap.daily_bar.timestamp = datetime(2026, 11, 4, tzinfo=ZoneInfo("UTC"))      # the prior day's bar
+    assert live.so_far({"AAAA": snap}, DAY) == {}
+
+
 def test_the_minute_so_far_is_found_on_a_summer_day_too():
     # 2026-07-01: New York is on EDT, so midnight ET and 09:30 ET come from the time-zone library.
     got = live.so_far({"AAAA": _snap("2026-07-01", 1.0, 2.0, 0.5, 1.5, "2026-07-01 09:30:05")}, date(2026, 7, 1))
