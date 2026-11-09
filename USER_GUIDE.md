@@ -495,6 +495,19 @@ request, 2026-11-07):
   which always puts today's picks back. The notice is today's only.
 - Past days are read every 5 minutes, not every 15 seconds: they do not change.
 
+**Jobs** (the owner's request, 2026-11-09). The **Jobs** button in the header opens a panel with
+the module's jobs from its status file (`ov_picks/CONTRACT.md`, "Status file"), one row each in
+the order of the day: Nightly (03:30 ET), Warmup and readiness (08:30, verdict at the 09:20
+deadline: both live in the warmup entry), Preview (09:00-09:24), Scan (09:25), Settle (09:26),
+Compare with OV (10:35), Archive (16:15) and Reference (Saturday 10:00). Each row shows the job's
+last state as a coloured badge (hover it for what it means), when the state was set, when the job
+runs next, and the module's message. A row from an earlier day is greyed: the job has not run yet
+today. "overdue" means the time the module set for the next run is more than 15 minutes past and
+no new entry has come, so check that the module is running (`OVERDUE_MS` in
+`dashboard-v2/src/windows/ovpicks/jobs.ts`). The dot on the button takes the worst state: green
+when all is well, amber for a warning or an overdue job, red for a failure or a difference from OV.
+The panel stays open across reloads, per window. It reads the same answer as the list: no new calls.
+
 **Set-up problems** replace the whole window: "OV picks are not set up" (`OV_PICKS_DIR` is not
 set), "This scanner has no OV picks reader" (`ov_picks/contract.py` is missing), "The OV picks
 folder is not there" (the folder is not mounted), or "OV picks could not be read". Each says what
