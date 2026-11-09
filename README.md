@@ -267,7 +267,8 @@ scanner shows the day's picks. It never writes that folder.
   window's linked charts and news (a linked 1-minute chart opens on 08:30-11:30 ET); the ▸
   arrow shows all of its details.
   It also shows the warmup, LATE, settled and shadow flags, the check against OV, the week's new
-  listings, and when the market is closed, the next scan. It is display only: it places no orders.
+  listings, and when the market is closed, the next scan. Its **Jobs** button shows each module
+  job's last state, when it ran and when it runs next (2026-11-09). It is display only: it places no orders.
   It reads `GET /api/v2/ov-picks` (`scanner/ov_picks_route.py`).
 - From 09:00 to 09:25 ET, before the picks freeze, the window shows the module's **preview**: the
   same ranked list as of the latest minute, marked "PREVIEW: not frozen". The module previews

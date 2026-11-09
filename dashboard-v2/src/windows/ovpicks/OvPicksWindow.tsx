@@ -24,10 +24,13 @@ import { usePoll } from '../../lib/usePoll'
 import { DASH } from '../../lib/format'
 import { linkSymbol } from '../../stores/linkStore'
 import { useWatchlists } from '../../stores/watchlistsStore'
+import { useScreens } from '../../stores/screensStore'
 import { Empty } from '../../components/primitives'
 import type { OvPick, OvPicksAnswer, OvPicksConfig, OvPicksHistory, OvPicksPreview } from './types'
 import { KIND_RANGE_ATR, fmtCell, hasMeanings, liveKind, metricOf, toneClass } from './card'
 import { FieldList, TradeCard } from './TradeCard'
+import { JobsPanel } from './JobsPanel'
+import { jobRows, jobsSummary } from './jobs'
 import { partArrow, partHeader, partHeat, partLabels, partScore, partTitle, rankLooks, rankTitle } from './parts'
 import { anySoFar, pollMs, soFar } from './live'
 import { fetchOvPicks, fetchOvPicksDays, fillOvPicksWatchlist, syncOvPicksWatchlist, watchlistHas } from './api'
@@ -316,13 +319,27 @@ export function OvPicksWindow({ win }: { win: OvPicksConfig }) {
   const nav = today
     ? <DayNav shown={shown} today={today} days={daysAnswer?.days ?? []} picked={picked} daysError={daysError ?? (daysAnswer?.reason_code ? daysAnswer.reason : null)} go={go} />
     : null
+  // The module's jobs and their last states (Ash, 2026-11-09): a button with the worst
+  // state's colour, and the panel under the header while it is open.
+  const jobsOpen = !!win.showJobs
+  const jobs = data?.status ? jobsSummary(jobRows(data, whenET)) : null
   const header = (extra?: ReactNode) => (
-    <div className="ovp-top">
-      {nav}
-      {extra}
-      <span className="flex-spacer" />
-      <button className="btn sm" onClick={() => void refresh()} disabled={loading} title={picked ? 'Read this day again now' : `Read the picks again now (the card refreshes every ${everyMs / 1000} s)`}>{loading ? '…' : 'Refresh'}</button>
-    </div>
+    <>
+      <div className="ovp-top">
+        {nav}
+        {extra}
+        <span className="flex-spacer" />
+        {jobs && (
+          <button className={`btn sm ovp-jobs-btn${jobsOpen ? ' on' : ''}`} aria-pressed={jobsOpen}
+            onClick={() => useScreens.getState().updateWindow(win.id, { showJobs: !jobsOpen })}
+            title={`${jobsOpen ? 'Hide' : 'Show'} the OV picks module's jobs and their last states. ${jobs.text}`}>
+            <i className={`ovp-jdot ovp-jdot-${jobs.tone}`} aria-hidden="true" />Jobs
+          </button>
+        )}
+        <button className="btn sm" onClick={() => void refresh()} disabled={loading} title={picked ? 'Read this day again now' : `Read the picks again now (the card refreshes every ${everyMs / 1000} s)`}>{loading ? '…' : 'Refresh'}</button>
+      </div>
+      {jobsOpen && data?.status && <JobsPanel a={data} />}
+    </>
   )
 
   if (!data) {

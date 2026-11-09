@@ -4,8 +4,12 @@
 // and "Status file").
 import type { WindowBase } from '../../types'
 
-/** Display-only: no settings, no order buttons. */
-export interface OvPicksConfig extends WindowBase { type: 'ovpicks' }
+/** Display-only: no order buttons. */
+export interface OvPicksConfig extends WindowBase {
+  type: 'ovpicks'
+  /** the module jobs panel is open (JobsPanel.tsx; Ash, 2026-11-09) */
+  showJobs?: boolean
+}
 
 /** How the window colours a value (ov_picks/CONTRACT.md, "What a value means"). The module
  *  decides; another value from a newer module is shown without a colour. */
