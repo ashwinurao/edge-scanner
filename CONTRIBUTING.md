@@ -117,10 +117,9 @@ opt-in compose service.
   samples here use made-up ones.
 - **Protected numbers and vendored code.** OV picks numbers (scoring, gates, universe and
   allocation) are protected like money logic: a change is its own PR in the module's repo, with a
-  full 2026 replay of how the picks change and the owner's go. Until the hand-over, the vendored
-  OpenVector code is never edited by hand and changes only through the module's sync tool. The
-  hand-over is the owner's go once the module's picks match OpenVector live; from then on the
-  private repo owns OpenVector's pick logic and changes it there by PR (CLAUDE.md).
+  full 2026 replay of how the picks change and the owner's go. Since the hand-over (2026-11-10,
+  the owner's go) the private repo owns OpenVector's pick logic and changes it there by PR; there
+  are no more syncs from OpenVector (CLAUDE.md).
 - **The contract is paired.** A change to `ov_picks/contract.py`, `ov_picks/CONTRACT.md` or
   `ov_picks/samples/` needs the same change in the module's repo, in a paired PR. Both repos pin
   the contract's hash in `tests/test_ov_picks_contract_pin.py`; set the new hash in both. A new
