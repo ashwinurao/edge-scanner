@@ -185,7 +185,7 @@ export interface OvPicksHistory {
   warnings: string[]
   schema_version: number | null
   trading_date: string
-  /** ov_rebuild: OV's 2026 rebuild; ov_live: OV's own live 09:25 ET scan. Another value is shown as written. */
+  /** ov_rebuild: OV's rebuild (2020-2026); ov_live: OV's own live 09:25 ET scan. Another value is shown as written. */
   source: string | null
   /** UTC: when the module exported it */
   exported_at: string | null

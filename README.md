@@ -280,7 +280,7 @@ scanner shows the day's picks. It never writes that folder.
   through the days that have a list, a date box picks any day, and **Today** goes back to the
   live list. A past day shows the module's own frozen picks for it, or, for a day before the
   module ran, OV's own list from the module's history files (`history/YYYY-MM-DD.json`, written
-  once by the module's `history` job), labelled "OV 2026 rebuild" or "OV live scan". A click on
+  once by the module's `history` job), labelled "OV rebuild" (2020-2026) or "OV live scan". A click on
   a row there sends the ticker and that day to the window's linked charts and news: charts
   end on that day and news covers the 3 days up to its 16:00 ET close. The "OV picks"
   watchlist then holds that day's top picks, named with the date (`ov_picks_day` on the list;
