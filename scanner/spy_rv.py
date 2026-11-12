@@ -3,14 +3,13 @@
 Fork-owned (Ash, project thread, 2026-11-12). Display only: no setup, gate or alert reads it.
 
 RV20 is the sample standard deviation of SPY's last 20 close-to-close simple returns, annualized
-with sqrt(252) and shown in percent. That is the number OpenVector's header shows as "SPY RV20"
-(pld_engine/web/market_reference.py, _regime_from_closes), and the one the realized-volatility
-study used. It needs 21 completed daily closes. The closes come from the scanner's own SPY daily
+with sqrt(252) and shown in percent. That is the same definition as the "SPY RV20" in
+OpenVector's header, and the one the realized-volatility study used. It needs 21 completed daily closes. The closes come from the scanner's own SPY daily
 history: loaded at startup, and rolled forward by scanner/daily_refresh.py before each session
 (03:30 ET), so the value is always "through the last completed session".
 
 CALM_MAX comes from the study "Realized volatility and opening drives (2026)" (2026-11-11) and its
-out-of-sample check on 2023-2025 (ov-research/history_rerun/results/era_2023_2025_summary.md):
+out-of-sample check on 2023-2025 (both in the project's research files, not in this repo):
 on days whose prior-session SPY RV20 was at or below 10.5, OV's top 4 lost their OR1/OR2 edge.
 The same data shows no middle band: 2026 days with RV20 10.5-12 did as well as 12-15, so the badge
 has two colours, not three.
