@@ -5,8 +5,8 @@ Fork-owned (Ash, project thread, 2026-11-12). Display only: no setup, gate or al
 RV20 is the sample standard deviation of SPY's last 20 close-to-close simple returns, annualized
 with sqrt(252) and shown in percent. That is the same definition as the "SPY RV20" in
 OpenVector's header, and the one the realized-volatility study used. It needs 21 completed daily
-closes. The closes come from the scanner's own SPY daily history: loaded at startup, and rolled forward by scanner/daily_refresh.py before each session
-(03:30 ET), so the value is always "through the last completed session".
+closes. The closes come from the scanner's own SPY daily history: loaded at startup, and rolled
+forward by scanner/daily_refresh.py before each session (03:30 ET), so the value is always "through the last completed session".
 
 CALM_MAX comes from the study "Realized volatility and opening drives (2026)" (2026-11-11) and its
 out-of-sample check on 2023-2025 (both in the project's research files, not in this repo):
