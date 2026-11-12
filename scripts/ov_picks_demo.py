@@ -33,6 +33,10 @@ bar, so the cells update every 2 seconds as they do live (Ash, 2026-11-08):
 
     python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 10:40" --demo-market
 
+--spy-rv20 sets a made-up SPY RV20 for the top bar badge (red at 10.5 or lower, green above):
+
+    python scripts/ov_picks_demo.py --sample frozen --at "2026-11-05 09:25:05" --spy-rv20 9.8
+
 The rank badges and the score parts (the owner's layout "C1", 2026-11-08) show on:
 
     python scripts/ov_picks_demo.py --sample score_parts --at "2026-11-05 10:40" --demo-market
@@ -238,6 +242,8 @@ def main() -> None:
     ap.add_argument("--unset", action="store_true", help="leave OV_PICKS_DIR unset (the 'not set up' card)")
     ap.add_argument("--demo-market", action="store_true",
                     help="add a linked chart and news window with made-up bars and headlines")
+    ap.add_argument("--spy-rv20", type=float, default=None,
+                    help="a made-up SPY RV20 for the top bar badge (scanner/spy_rv.py), through the prior weekday")
     ap.add_argument("--port", type=int, default=7787)
     ap.add_argument("--work", default="", help="scratch folder (default .logs/ov-picks-demo/<sample>)")
     args = ap.parse_args()
@@ -287,7 +293,12 @@ def main() -> None:
                 for p in contract.read_preview(work / "out", d.name)["picks"]}
     skip = {s.strip().upper() for s in args.not_scanned.split(",") if s.strip()}
     scanned = sorted(tickers - skip) or ["SPY"]
-    stub = SimpleNamespace(_states={s: object() for s in scanned}, _spy_state=None, _regime=None, _sector_map={})
+    from scanner import spy_rv
+    prior = start.date() - timedelta(days=1)
+    while prior.weekday() >= 5:
+        prior -= timedelta(days=1)
+    stub = SimpleNamespace(_states={s: object() for s in scanned}, _spy_state=None, _regime=None, _sector_map={},
+                           _spy_rv=spy_rv.reading(args.spy_rv20, prior.isoformat()))
     feed = None
     if args.demo_market:
         from scanner import api_v2

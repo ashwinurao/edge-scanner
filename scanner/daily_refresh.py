@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
+from scanner import spy_rv
 from scanner.state import SymbolState
 
 log = logging.getLogger(__name__)
@@ -71,6 +72,9 @@ def apply(scanner, spy_daily: pd.DataFrame, symbol_daily: dict, sector_daily: di
     spy_state = getattr(scanner, "_spy_state", None)
     if spy_state is not None and spy_daily is not None and not spy_daily.empty:
         _copy(SymbolState.from_history("SPY", spy_daily, spy_daily), spy_state)
+    if spy_daily is not None and not spy_daily.empty:
+        # The top bar's SPY RV20 rolls forward with the closes (scanner/spy_rv.py).
+        scanner._spy_rv = spy_rv.from_daily(spy_daily)
     for sym, live in scanner._states.items():
         daily = symbol_daily.get(sym)
         if daily is None or daily.empty:
