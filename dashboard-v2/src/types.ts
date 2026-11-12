@@ -248,6 +248,8 @@ export interface ClockInfo {
   replay?: { date: string; speed: number; cursor_et: string | null } | null
   /** which provider, and whether bars are still arriving (older scanners omit it) */
   data?: { provider: string | null; last_bar_et: string | null; last_bar_age_s: number | null } | null
+  /** SPY RV20 through the last completed session, for the top bar (fork, scanner/spy_rv.py) */
+  spy_rv?: { rv20: number; through: string | null; calm: boolean; calm_max: number } | null
 }
 
 export interface ToplistRow {

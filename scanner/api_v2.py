@@ -391,6 +391,8 @@ def register_v2_routes(app: FastAPI, app_state, **state_kw) -> V2State:
             "session": session,
             "regime": regime,
             "spy": spy,
+            # SPY RV20 through the last completed session (scanner/spy_rv.py); None until known.
+            "spy_rv": getattr(scanner, "_spy_rv", None),
             "next_change_et": nxt.isoformat(timespec="seconds") if nxt else None,
             "replay": replay,
             "data": data_status(app_state),

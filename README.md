@@ -244,6 +244,11 @@ bars, 1,000 symbols per request. These are Alpaca's own bars, handed on 3 second
 closes, so alerts come a few seconds later than on the stream. The code is in
 `scanner/data/alpaca_poll.py`.
 
+**SPY RV20 in the top bar (fork).** The top bar shows SPY's 20-day realized volatility next to the
+market regime: red at 10.5 or lower (a calm SPY day), green above. It comes from the SPY daily
+history the scanner already loads, so it adds no network call. See
+[USER_GUIDE: The top bar](USER_GUIDE.md#the-top-bar) and `scanner/spy_rv.py`.
+
 ## OV picks
 
 This fork can show the pre-market ranked list that a separate module, "OV picks", freezes at

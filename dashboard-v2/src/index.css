@@ -235,6 +235,10 @@ select.input optgroup { background: var(--panel); color: var(--text-dim); }
 .regime { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 20px; border: 1px solid var(--border); background: var(--panel-2); font-size: 11px; font-weight: 600; text-transform: capitalize; color: var(--text-dim); }
 .regime.bullish { color: var(--up-text); background: var(--up-soft); border-color: color-mix(in oklch, var(--up) 30%, transparent); }
 .regime.bearish { color: var(--down-text); background: var(--down-soft); border-color: color-mix(in oklch, var(--down) 30%, transparent); }
+/* SPY RV20 (fork, SpyRvBadge.tsx): red on a calm SPY day, green otherwise */
+.regime.spy-rv { text-transform: none; font-family: var(--font-mono); font-weight: 500; }
+.regime.spy-rv.calm { color: var(--down-text); background: var(--down-soft); border-color: color-mix(in oklch, var(--down) 30%, transparent); }
+.regime.spy-rv.active { color: var(--up-text); background: var(--up-soft); border-color: color-mix(in oklch, var(--up) 30%, transparent); }
 
 .clock { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--text); }
 .clock-tz { font-size: 10px; color: var(--text-faint); margin-left: 4px; }
