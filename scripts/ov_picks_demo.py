@@ -85,7 +85,9 @@ def _screen(market: bool = False) -> dict:
         windows["ch"] = {**base, "id": "ch", "type": "chart", "symbol": None, "timeframe": "5m", "extended": False,
                          "overlays": {"vwap": True, "ema9": True, "ema21": True, "volume": True, "sma50": False,
                                       "sma100": False, "sma200": False, "pdHL": True, "pmHL": True}}
-        windows["nw"] = {**base, "id": "nw", "type": "news", "mode": "linked", "symbol": None, "hours": 24,
+        # "market" like a News window added from the top bar: a linked one follows its color in
+        # either mode (src/windows/news/newsTarget.ts; Ash, 2026-11-12).
+        windows["nw"] = {**base, "id": "nw", "type": "news", "mode": "market", "symbol": None, "hours": 24,
                          "limit": 20, "thumbnails": False}
         layout = [
             {"i": "ovp", "x": 0, "y": 0, "w": 0.6, "h": 0.5, "z": 1},
