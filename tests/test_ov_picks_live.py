@@ -613,13 +613,11 @@ def test_a_failed_minute_so_far_keeps_the_last_values_and_is_asked_again_two_sec
     assert got.forming["AAAA"]["high"] == 43.4 and len(so_far.calls) == 2
 
 
-def test_the_minute_so_far_is_never_asked_from_0931_or_for_a_past_day():
+def test_the_minute_so_far_is_never_asked_for_a_past_day():
     so_far = FakeSoFar({"AAAA": _so_far(42.9, 43.4, 42.7, 43.1, "2026-11-05 09:30:41")})
-    store = live.FirstMinuteBars(None, clock=Clock(), forming=so_far)
-    for now in ("2026-11-05 09:31:00", "2026-11-05 09:31:02"):
-        got = store.get(DAY, ["AAAA"], _et(now))
-        assert got.waiting and got.forming == {}
-    store.get(PAST, ["AAAA"], _et("2026-11-05 09:30:42"))
+    store = live.FirstMinuteBars(FakeFetch(), clock=Clock(), forming=so_far)
+    for now in ("2026-11-05 09:30:42", "2026-11-05 09:31:01", "2026-11-05 09:31:05"):
+        store.get(PAST, ["AAAA"], _et(now))
     assert so_far.calls == []
 
 
@@ -645,7 +643,8 @@ def test_from_0931_03_the_bar_replaces_the_minute_so_far_and_is_asked_again_ever
     fetch.bars[DAY]["BBBB"] = _bar(18.3, 18.45, 18.2, 18.4)
     got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:05"))
     assert fetch.calls[1] == (DAY, ["BBBB"]) and got.forming == {} and set(got.bars) == {"AAAA", "BBBB"}
-    assert len(so_far.calls) == 1
+    # While BBBB had no bar, the snapshot was asked for it alone (brief 20); with both bars, never.
+    assert so_far.calls[1:] == [(DAY, ["BBBB"])]
 
 
 def test_after_0931_30_a_missing_bar_is_asked_again_once_a_minute():
@@ -667,7 +666,8 @@ def test_fill_shows_the_minute_so_far_says_until_when_and_adds_it_as_the_first_m
     live.fill([row], live.Lookup(waiting=True, live=True, forming={"AAAA": so_far}))
     _, rng, opn = row["metrics"]
     assert (rng["value"], rng["tone"]) == (0.04, "good")
-    assert rng["note"] == "So far, to 09:30:41 ET. The 09:30 bar replaces it just after 09:31. tight"
+    assert rng["note"] == ("So far, to 09:30:41 ET. From Alpaca's snapshot; the 09:30 bar replaces it "
+                           "just after 09:31. tight")
     assert (opn["value"], opn["tone"]) == ("above", "good")
     assert row[live.FIRST_MINUTE] == _bar(42.9, 43.0, 42.9, 43.0)
     assert row[live.AS_OF] == "09:30:41"
@@ -679,10 +679,10 @@ def test_with_its_bar_a_row_has_no_time_so_far():
     assert live.AS_OF not in row and row["metrics"][1]["note"] == "tight"
 
 
-def test_inside_the_minute_a_ticker_without_a_trade_yet_says_so():
+def test_before_its_bar_a_ticker_the_snapshot_does_not_show_yet_says_so():
     row = _row("AAAA")
     live.fill([row], live.Lookup(waiting=True, live=True))
-    assert {m["note"] for m in row["metrics"][1:]} == {live.NOTE_NO_TRADE_YET}
+    assert {m["note"] for m in row["metrics"][1:]} == {live.NOTE_NOT_IN_SNAPSHOT_YET}
 
 
 @pytest.mark.parametrize("now, lookup, want", [
@@ -720,7 +720,7 @@ def test_the_route_fills_the_minute_so_far_and_asks_the_window_to_refresh_every_
     assert (rng["AAAA"]["value"], rng["AAAA"]["tone"]) == (0.7, "bad")
     assert rng["AAAA"]["note"].startswith("So far, to 09:30:41 ET.")
     assert rows["AAAA"][live.AS_OF] == "09:30:41"
-    assert rng["BBBB"]["value"] is None and rng["BBBB"]["note"] == live.NOTE_NO_TRADE_YET
+    assert rng["BBBB"]["value"] is None and rng["BBBB"]["note"] == live.NOTE_NOT_IN_SNAPSHOT_YET
 
 
 def test_the_route_does_not_ask_the_window_to_hurry_outside_the_minute_or_for_a_past_day(monkeypatch):
@@ -746,4 +746,208 @@ def test_the_route_asks_the_scanners_feed_for_the_minute_so_far_by_default(monke
     route.register(app, SimpleNamespace(feed=feed), clock=lambda: _et("2026-11-05 09:30:10"))
     body = TestClient(app).get(route.ROUTE).json()
     assert asked == [sorted(p["ticker"] for p in body["day"]["picks"])]
+    assert body["refresh_seconds"] == live.REFRESH_SECONDS
+
+
+# ---------------------------------------------------------------- the snapshot's 09:30 bar (brief 20, 2026-11-13)
+# The first measured open (2026-11-13, the opening recorder's file): the snapshot's day bar
+# stayed the prior day's until 09:31:00.65 ET, so the minute so far showed nothing, while
+# the snapshot's minute bar became the finished 09:30 bar at 09:31:00.08-0.65 and the bars
+# request had it only at 09:31:01.4-06.5. Ash's go, project chat, 2026-11-13 15:38:32 UTC:
+# fill the "1st min" columns from that minute bar, 2 to 5 s sooner, marked not confirmed.
+
+def _snap_min(minute_at, o, h, low, cl, bar_day="2026-11-04", last="2026-11-05 09:31:00.40"):
+    """An Alpaca snapshot as seen just after 09:31 on 2026-11-13: the minute bar stamped
+    `minute_at` (ET, None for no minute bar), the prior day's day bar, a trade from 09:31."""
+    snap = _snap(bar_day, 40.0, 41.0, 39.0, 40.5, last)
+    snap.minute_bar = None if minute_at is None else SimpleNamespace(
+        timestamp=_et(minute_at).astimezone(ZoneInfo("UTC")), open=o, high=h, low=low, close=cl, volume=5000)
+    return snap
+
+
+def _whole(o, h, low, cl, day="2026-11-05"):
+    """The snapshot's 09:30 bar as the store keeps it: the whole minute, as of its end."""
+    return {**_bar(o, h, low, cl), "as_of": _et(f"{day} 09:31:00")}
+
+
+def test_a_snapshot_minute_bar_stamped_0930_is_the_whole_minute_as_of_0931():
+    got = live.so_far({"AAAA": _snap_min("2026-11-05 09:30", 42.9, 43.4, 42.7, 43.1)}, DAY)
+    assert got == {"AAAA": _whole(42.9, 43.4, 42.7, 43.1)}
+
+
+@pytest.mark.parametrize("minute_at", [
+    "2026-11-05 09:29",       # the pre-market's last minute: the 09:30 bar is not out yet
+    "2026-11-05 09:31",       # a later minute: the 09:30 bar is gone from the snapshot
+    "2026-11-04 09:30",       # another day's 09:30 bar
+    "2026-11-05 09:30:01",    # not on the minute
+    None,                     # no minute bar
+])
+def test_a_snapshot_minute_bar_not_stamped_0930_of_the_day_fills_nothing(minute_at):
+    assert live.so_far({"AAAA": _snap_min(minute_at, 42.9, 43.4, 42.7, 43.1)}, DAY) == {}
+
+
+def test_a_minute_bar_with_a_bad_price_fills_nothing():
+    assert live.so_far({"AAAA": _snap_min("2026-11-05 09:30", 42.9, float("nan"), 42.7, 43.1)}, DAY) == {}
+
+
+def test_the_snapshots_0930_bar_wins_over_the_day_bar_so_far():
+    # Both in one snapshot: the minute bar is the whole minute, the day bar only part of it.
+    snap = _snap_min("2026-11-05 09:30", 42.9, 43.4, 42.7, 43.1, bar_day="2026-11-05", last="2026-11-05 09:30:59")
+    assert live.so_far({"AAAA": snap}, DAY) == {"AAAA": _whole(42.9, 43.4, 42.7, 43.1)}
+
+
+def test_the_snapshots_0930_bar_is_found_on_a_summer_day_too():
+    # 2026-07-01 09:30 ET is 13:30 UTC (EDT): the time comes from the time-zone library.
+    snap = _snap_min("2026-07-01 09:30", 1.0, 2.0, 0.5, 1.5, bar_day="2026-06-30", last="2026-07-01 09:31:00.40")
+    assert live.so_far({"AAAA": snap}, date(2026, 7, 1)) == {"AAAA": _whole(1.0, 2.0, 0.5, 1.5, day="2026-07-01")}
+
+
+def test_fill_shows_the_snapshots_0930_bar_marked_not_confirmed():
+    row = _row("AAAA")
+    live.fill([row], live.Lookup(waiting=True, live=True, forming={"AAAA": _whole(42.9, 43.0, 42.9, 43.0)}))
+    _, rng, opn = row["metrics"]
+    assert (rng["value"], rng["tone"]) == (0.04, "good")
+    assert (opn["value"], opn["tone"]) == ("above", "good")
+    assert rng["note"] == ("The 09:30 bar as Alpaca's snapshot shows it, not confirmed yet. The 09:30 bar "
+                           "request confirms it within seconds. tight")
+    assert opn["note"] == live.note_unconfirmed("over")
+    assert row[live.FIRST_MINUTE] == _bar(42.9, 43.0, 42.9, 43.0)
+    # Edge Trader reads first_minute_as_of as "not final"; its order buttons wait for the bar.
+    assert row[live.AS_OF] == "09:31:00"
+
+
+def test_after_0931_the_snapshot_is_asked_every_two_seconds_but_only_for_tickers_without_their_bar():
+    fetch = FakeFetch({DAY: {}})
+    so_far = FakeSoFar({"AAAA": _whole(42.9, 43.4, 42.7, 43.1), "BBBB": _whole(18.3, 18.4, 18.2, 18.3)})
+    clock = Clock()
+    store = live.FirstMinuteBars(fetch, clock=clock, forming=so_far)
+
+    got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:00.5"))     # before the bar is due
+    assert got.waiting and got.forming == so_far.minute and fetch.calls == []
+    clock.t += 1.9
+    store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:02.4"))
+    assert len(so_far.calls) == 1                                            # within 2 s: served as known
+    clock.t += 0.1
+    store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:02.5"))
+    assert len(so_far.calls) == 2
+
+    clock.t += 0.5                                                           # 09:31:03: the bars request, no bar yet
+    got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:03"))
+    assert fetch.calls == [(DAY, ["AAAA", "BBBB"])] and len(so_far.calls) == 2
+    assert got.forming == so_far.minute and not got.waiting                  # the cells keep the snapshot's bar
+
+    clock.t += 2
+    fetch.bars[DAY]["AAAA"] = _bar(42.9, 43.4, 42.7, 43.1)
+    got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:05"))
+    assert fetch.calls[-1] == (DAY, ["AAAA", "BBBB"]) and so_far.calls[-1] == (DAY, ["BBBB"])
+    assert set(got.bars) == {"AAAA"} and set(got.forming) == {"BBBB"}
+
+    clock.t += 2
+    fetch.bars[DAY]["BBBB"] = _bar(18.3, 18.4, 18.2, 18.3)
+    got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:07"))
+    assert set(got.bars) == {"AAAA", "BBBB"} and got.forming == {}
+    asked = len(so_far.calls)
+    clock.t += 30
+    store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:37"))
+    assert len(so_far.calls) == asked == 3                                   # every bar is in: never again
+
+
+def test_the_snapshot_is_never_asked_from_0935_et():
+    fetch = FakeFetch({DAY: {}})
+    so_far = FakeSoFar()
+    clock = Clock()
+    store = live.FirstMinuteBars(fetch, clock=clock, forming=so_far)
+    store.get(DAY, ["HALT"], _et("2026-11-05 09:34:59"))
+    assert len(so_far.calls) == 1                                            # still missing, before 09:35
+    clock.t += 61
+    got = store.get(DAY, ["HALT"], _et("2026-11-05 09:35:00"))
+    assert got.gone == {"HALT"} and len(so_far.calls) == 1
+    # A failed bars request after 09:35 leaves the ticker missing, but the snapshot stays quiet.
+    fetch.error = RuntimeError("429 too many requests")
+    clock.t += 61
+    store.get(DAY, ["LATE"], _et("2026-11-05 09:36:01"))
+    assert len(so_far.calls) == 1
+
+
+def test_after_0931_a_failed_snapshot_keeps_the_last_values_and_is_asked_again():
+    fetch = FakeFetch({DAY: {}})
+    so_far = FakeSoFar({"AAAA": _whole(42.9, 43.4, 42.7, 43.1)})
+    clock = Clock()
+    store = live.FirstMinuteBars(fetch, clock=clock, forming=so_far)
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:31:01"))
+    so_far.error = RuntimeError("429 too many requests")
+    clock.t += 2
+    got = store.get(DAY, ["AAAA"], _et("2026-11-05 09:31:03"))
+    assert got.forming == {"AAAA": _whole(42.9, 43.4, 42.7, 43.1)} and len(so_far.calls) == 2
+    clock.t += 2
+    so_far.error = None
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:31:05"))
+    assert len(so_far.calls) == 3
+
+
+def test_the_bar_replaces_the_snapshots_bar_and_a_difference_over_a_cent_logs_one_warning(caplog):
+    caplog.set_level("INFO", logger=live.__name__)
+    so_far = FakeSoFar({"AAAA": _whole(42.90, 43.40, 42.70, 43.10), "BBBB": _whole(18.30, 18.40, 18.20, 18.30)})
+    fetch = FakeFetch({DAY: {"AAAA": _bar(42.90, 43.42, 42.70, 43.10),      # high 2 cents higher
+                             "BBBB": _bar(18.31, 18.41, 18.19, 18.31)}})    # each one cent off: no warning
+    clock = Clock()
+    store = live.FirstMinuteBars(fetch, clock=clock, forming=so_far)
+    store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:01"))
+    clock.t += 2
+    got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:03"))
+    assert got.bars == {"AAAA": _bar(42.90, 43.42, 42.70, 43.10), "BBBB": _bar(18.31, 18.41, 18.19, 18.31)}
+    assert got.forming == {}
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    text = warnings[0].getMessage()
+    assert "AAAA" in text and "43.42" in text and "43.40" in text and "BBBB" not in text
+    row = _row("AAAA")
+    live.fill([row], got)
+    assert live.AS_OF not in row and row[live.FIRST_MINUTE] == _bar(42.90, 43.42, 42.70, 43.10)
+    assert row["metrics"][1]["note"] == "ordinary"                          # 0.72 / 2.4 = 0.3: the band's note alone
+
+
+def test_a_minute_so_far_that_differs_from_the_bar_logs_no_warning(caplog):
+    # The day bar's minute so far misses the minute's last trades, so a difference is expected.
+    caplog.set_level("INFO", logger=live.__name__)
+    so_far = FakeSoFar({"AAAA": _so_far(42.90, 43.20, 42.80, 43.00, "2026-11-05 09:30:50")})
+    store = live.FirstMinuteBars(FakeFetch({DAY: {"AAAA": _bar(42.90, 43.60, 42.60, 43.30)}}), clock=Clock(), forming=so_far)
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:51"))
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:31:03"))
+    assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+
+
+def test_a_preview_never_asks_for_the_snapshot_or_the_bars():
+    so_far, fetch = FakeSoFar(), FakeFetch()
+    store = live.FirstMinuteBars(fetch, clock=Clock(), forming=so_far)
+    body = {"preview": {"picks": [_row("AAAA")]}}
+    live.fill_answer(body, store, _et("2026-11-05 09:31:05"))
+    assert so_far.calls == [] and fetch.calls == []
+    assert {m["note"] for m in body["preview"]["picks"][0]["metrics"][1:]} == {live.NOTE_WAITING}
+
+
+def test_the_route_fills_the_columns_from_the_snapshots_0930_bar_before_the_bars_request_has_it(monkeypatch):
+    bars = _sample_bars(DAY)
+    snaps = {t: _snap_min("2026-11-05 09:30", b["open"], b["high"], b["low"], b["close"]) for t, b in bars.items()}
+    asked = []
+
+    def get_stock_snapshot(request):
+        asked.append(list(request.symbol_or_symbols))
+        return {t: s for t, s in snaps.items() if t in request.symbol_or_symbols}
+
+    # The bars request has no 09:30 bar yet (2026-11-13: it had them at 09:31:01.4 to 06.5).
+    feed = SimpleNamespace(_fetch_recent_minute_bars=lambda *a: pd.DataFrame(),
+                           _client=SimpleNamespace(get_stock_snapshot=get_stock_snapshot))
+    monkeypatch.setenv(route.ENV_VAR, str(SAMPLES / "meanings"))
+    app = FastAPI()
+    route.register(app, SimpleNamespace(feed=feed), clock=lambda: _et("2026-11-05 09:31:04"))
+    body = TestClient(app).get(route.ROUTE).json()
+    rows = {p["ticker"]: p for p in body["day"]["picks"]}
+    assert asked == [sorted(rows)]
+    rng, opn = _cells(body["day"]["picks"], "1st min (ATR)"), _cells(body["day"]["picks"], "Open vs PM")
+    assert (rng["AAAA"]["value"], rng["AAAA"]["tone"]) == (0.7, "bad")
+    assert (rng["BBBB"]["value"], opn["BBBB"]["value"]) == (0.11, "inside")
+    assert rng["AAAA"]["note"].startswith("The 09:30 bar as Alpaca's snapshot shows it, not confirmed yet.")
+    assert rows["BBBB"][live.FIRST_MINUTE] == _bar(18.30, 18.35, 18.25, 18.30)
+    assert {p[live.AS_OF] for p in rows.values()} == {"09:31:00"}
     assert body["refresh_seconds"] == live.REFRESH_SECONDS
