@@ -3,7 +3,7 @@
 // 2026-11-08). Hand-built rows; the tickers and numbers are made up.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { anySoFar, pollMs, soFar } from '../src/windows/ovpicks/live.ts'
+import { MINUTE_END_ET, anySoFar, pollMs, snapshotBar, soFar } from '../src/windows/ovpicks/live.ts'
 import type { OvPick } from '../src/windows/ovpicks/types.ts'
 
 const row = (more: Partial<OvPick> = {}): OvPick => ({
@@ -30,4 +30,16 @@ test('a live cell is "so far" only while the row has the minute so far', () => {
 test('the key explains the dot only while some row is so far', () => {
   assert.equal(anySoFar([row({ first_minute: bar }), row({ ticker: 'BBBB' })]), false)
   assert.equal(anySoFar([row({ first_minute: bar }), row({ ticker: 'BBBB', first_minute: bar, first_minute_as_of: '09:30:12' })]), true)
+})
+
+// Brief 20 (2026-11-13): from 09:31:00 the scanner fills the cells from the snapshot's 09:30 bar,
+// marked "09:31:00" (the minute's end) until the bar request confirms it.
+test('the snapshot\'s 09:30 bar is marked not confirmed, and only it', () => {
+  assert.equal(MINUTE_END_ET, '09:31:00')
+  assert.equal(snapshotBar(row({ first_minute: bar, first_minute_as_of: '09:31:00' })), true)
+  assert.equal(soFar(row({ first_minute: bar, first_minute_as_of: '09:31:00' }), true), '09:31:00')
+  assert.equal(anySoFar([row({ first_minute: bar, first_minute_as_of: '09:31:00' })]), true)
+  assert.equal(snapshotBar(row({ first_minute: bar, first_minute_as_of: '09:30:41' })), false)   // the minute so far
+  assert.equal(snapshotBar(row({ first_minute: bar })), false)                                   // the 09:30 bar: final
+  assert.equal(snapshotBar(row({ first_minute: null, first_minute_as_of: '09:31:00' })), false)
 })

@@ -52,21 +52,24 @@ The answer always has every key in ROUTE_FIELDS:
 - warnings: route-level warnings. The day's and the status file's own warnings stay
   inside those views.
 - refresh_seconds: how often the window should ask again while today's live columns are
-  about to fill or still forming (from 09:29:45 ET until each row has its 09:30 bar, at most
+  about to fill or not confirmed (from 09:29:45 ET until each row has its 09:30 bar, at most
   until 09:31:30 ET); null otherwise, when the window keeps its own pace.
 
 The views are the contract readers' own, with one addition: the live columns. A metric
 the module marks `live` (ov_picks/CONTRACT.md, "Live metrics") is null in the file; the
 route fills its value, tone and note from the day's 09:30 ET minute, and adds that minute
-to each such row as `first_minute` (null without one). During the minute the values are
-the minute so far, and the row has `first_minute_as_of`, the ET time they run to; from
-just after 09:31 they are the minute's bar. A row without a live column is served as read.
-The minute is the route's only network call, both through the scanner's Alpaca data
-client, REST only: one cached bars request per day shown, from 09:31:03 ET (Ash's go,
-project thread, 2026-11-07), and while the minute forms, today only, one snapshot request
-for the day's tickers at most every 2 seconds while the window asks (Ash, project thread,
+to each such row as `first_minute` (null without one). Until the 09:30 bar is in, the
+values come from Alpaca's snapshot, not confirmed, and the row has `first_minute_as_of`, the
+ET time they run to: "09:31:00" for the snapshot's 09:30 bar, a trade's time for the minute
+so far. Once the bar is in they are the bar, and the row has no `first_minute_as_of`. A row
+without a live column is served as read. The minute is the route's only network call, both
+through the scanner's Alpaca data client, REST only: one cached bars request per day shown,
+from 09:31:03 ET (Ash's go, project thread, 2026-11-07), and, today only, from 09:30 ET until
+each ticker has its bar and at most until 09:35 ET, one snapshot request for the tickers
+still without one at most every 2 seconds while the window asks (Ash, project thread,
 2026-11-08 05:10 UTC: "can you make those two columns update live after 9:30 market
-open?"; scanner/ov_picks_live.py). A failed request leaves the cells blank, or as they
+open?"; his go for the snapshot's 09:30 bar, project chat, 2026-11-13 15:38:32 UTC;
+scanner/ov_picks_live.py). A failed request leaves the cells blank, or as they
 were, with a note that says so; a failure while filling them adds a warning. The picks
 show either way.
 
