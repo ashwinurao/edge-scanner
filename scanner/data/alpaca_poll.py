@@ -11,10 +11,13 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 import pandas as pd
+
+from scanner import netlog
 
 log = logging.getLogger(__name__)
 
@@ -74,25 +77,43 @@ def poll_minute_bars(fetch: Callable[[list[str], datetime, datetime], pd.DataFra
              len(symbols), len(batches), every)
     print(f"       Alpaca websocket off (ALPACA_STREAM=0): {len(symbols):,} symbols on 1-minute bars "
           f"polled from REST every {every:g}s.", flush=True)
+    # fork: one call line per pass and one bars line per minute (scanner/netlog.py, brief 11).
+    lateness = netlog.BarLateness(len(symbols), start_now)
+    netlog.emit("note", text="bar poll start", symbols_n=len(symbols), batches=len(batches), every_s=every)
     while True:
+        t_pass = time.monotonic()
         now = clock()
         start = max(now - timedelta(minutes=MAX_GAP_MINUTES),
                     min(now - timedelta(minutes=LOOKBACK_MINUTES), last_ok - 2 * _MINUTE))
+        lateness.moved_past(start)
         frames, ok = [], True
-        for group in batches:
-            try:
-                frames.append(fetch(group, start, now))
-            except Exception as exc:
-                ok = False
-                log.warning("Alpaca bar poll failed for %d symbols: %s", len(group), str(exc)[:200])
+        with netlog.call("alpaca_data", "bars_poll", "poller", defer=True,
+                         symbols_n=len(symbols), batches=len(batches)) as pass_call:
+            for group in batches:
+                try:
+                    frames.append(fetch(group, start, now))
+                    if pass_call:
+                        lateness.seen(frames[-1])
+                except Exception as exc:
+                    ok = False
+                    pass_call.error(exc)
+                    log.warning("Alpaca bar poll failed for %d symbols: %s", len(group), str(exc)[:200])
         if ok:
             last_ok = now
         df = pd.concat([f for f in frames if f is not None and not f.empty]) if any(
             f is not None and not f.empty for f in frames) else pd.DataFrame()
-        for bar in closed_bars(df, last, floor, now):
+        handed = closed_bars(df, last, floor, now)
+        if pass_call:
+            lateness.handed(handed)
+        for bar in handed:
             try:
                 callback(bar)
             except Exception as exc:
                 log.error("Poll callback error for %s: %s", bar["symbol"], exc, exc_info=True)
+        if pass_call:
+            # The pass: fetch, sort and hand the bars to the scanner. Longer than `every` is an overrun.
+            pass_ms = (time.monotonic() - t_pass) * 1000
+            pass_call.write(items=len(df), data_ts=netlog.newest_bar_end(df), handed=len(handed),
+                            pass_ms=round(pass_ms, 1), overrun=pass_ms > every * 1000)
         if stop.wait(every):
             return

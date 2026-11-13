@@ -19,6 +19,8 @@ from typing import Iterable
 
 import requests
 
+from scanner import netlog
+
 log = logging.getLogger(__name__)
 
 SOURCES = ("alpaca", "nasdaq")
@@ -74,11 +76,19 @@ def parse_nasdaq_directory(nasdaq_listed: str, other_listed: str) -> list[dict]:
     return out
 
 
+def _hooks(get, vendor: str) -> dict:
+    # fork: answer lines (scanner/netlog.py) only on the real requests.get; injected fakes get
+    # exactly the arguments they always got.
+    return netlog.request_hooks(vendor) if get is requests.get else {}
+
+
 def fetch_nasdaq(get=requests.get) -> list[dict]:
     texts = []
     for url in _NASDAQ_URLS:
-        resp = get(url, headers=_UA, timeout=30)
-        resp.raise_for_status()
+        with netlog.call("nasdaqtrader", "symbol_directory", "universe") as c:
+            resp = get(url, headers=_UA, timeout=30, **_hooks(get, "nasdaqtrader"))
+            c.set(http=getattr(resp, "status_code", None))
+            resp.raise_for_status()
         texts.append(resp.text)
     recs = parse_nasdaq_directory(*texts)
     log.info("Nasdaq directory: %d listed securities", len(recs))
@@ -90,8 +100,11 @@ def fetch_alpaca(get=requests.get) -> list[dict]:
     headers = {"APCA-API-KEY-ID": os.environ["ALPACA_API_KEY"],
                "APCA-API-SECRET-KEY": os.environ["ALPACA_SECRET_KEY"]}
     for base in _ALPACA_BASES:
-        resp = get(f"{base}/v2/assets", headers=headers,
-                   params={"status": "active", "asset_class": "us_equity"}, timeout=30)
+        with netlog.call("alpaca_trading", "assets", "universe", base=base) as c:
+            resp = get(f"{base}/v2/assets", headers=headers,
+                       params={"status": "active", "asset_class": "us_equity"}, timeout=30,
+                       **_hooks(get, "alpaca_trading"))
+            c.set(http=getattr(resp, "status_code", None))
         if resp.status_code in (401, 403):
             continue
         resp.raise_for_status()

@@ -27,7 +27,7 @@ import pandas as pd
 from fastapi import Body, FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 
-from scanner import past_day, plugins  # fork: past_day for /api/v2/news ?date
+from scanner import netlog, past_day, plugins  # fork: past_day for /api/v2/news ?date; netlog (brief 11)
 from scanner.custom_setups import CustomEvaluator, CustomSetupStore, SetupError, SetupNames, summary_lines
 from scanner.events import EventBuffer
 from scanner.recent_activity import build_setup_check
@@ -339,6 +339,7 @@ def register_v2_routes(app: FastAPI, app_state, **state_kw) -> V2State:
     v2 = V2State(app_state, **state_kw)
     app_state.v2 = v2
     scanner = app_state.scanner
+    _register_netlog(app, app_state)
 
     def states_copy() -> list[tuple[str, Any]]:
         try:
@@ -868,6 +869,24 @@ def register_v2_routes(app: FastAPI, app_state, **state_kw) -> V2State:
         return JSONResponse({"ok": v2.watchlists.delete(wl_id)})
 
     return v2
+
+
+def _register_netlog(app: FastAPI, app_state) -> None:
+    """fork: route timing, loop lag, feed client count and GET /api/v2/diag/net (scanner/netlog.py,
+    Ash 2026-11-13 14:05 UTC, brief 11). A record only: nothing here changes an answer."""
+    app.add_middleware(netlog.RouteTimer)
+    hub = getattr(app_state, "hub", None)
+    if hub is not None:
+        netlog.gauge("feed_clients", lambda: len(getattr(hub, "_clients", ())))
+
+    @app.on_event("startup")
+    async def _netlog_loop_lag() -> None:
+        netlog.start_loop_monitor()
+
+    # A plain def: FastAPI runs it in a worker thread, so the percentiles never hold the loop.
+    @app.get("/api/v2/diag/net")
+    def v2_diag_net() -> JSONResponse:
+        return JSONResponse(netlog.diag())
 
 
 _missing_logged = False

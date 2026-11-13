@@ -306,7 +306,11 @@ def alpaca_forming(feed: Any) -> Optional[Forming]:
     def forming(day: date, tickers: list[str]) -> dict[str, dict[str, Any]]:
         from alpaca.data.requests import StockSnapshotRequest
         from scanner.data.alpaca import market_data_feed
-        snaps = client.get_stock_snapshot(StockSnapshotRequest(symbol_or_symbols=tickers, feed=market_data_feed()))
+        from scanner import netlog  # fork: the call's time and data age (scanner/netlog.py, brief 11)
+        with netlog.call("alpaca_data", "snapshots", "ov_picks_live", symbols_n=len(tickers)) as c:
+            snaps = client.get_stock_snapshot(StockSnapshotRequest(symbol_or_symbols=tickers, feed=market_data_feed()))
+            if c:
+                c.seen(items=len(snaps), data_ts=netlog.newest_trade(snaps))
         return so_far(snaps, day)
 
     return forming
