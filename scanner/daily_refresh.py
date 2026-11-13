@@ -75,6 +75,7 @@ def apply(scanner, spy_daily: pd.DataFrame, symbol_daily: dict, sector_daily: di
     if spy_daily is not None and not spy_daily.empty:
         # The top bar's SPY RV20 rolls forward with the closes (scanner/spy_rv.py).
         scanner._spy_rv = spy_rv.from_daily(spy_daily)
+        scanner._spy_rv_history = spy_rv.history(spy_daily)
     for sym, live in scanner._states.items():
         daily = symbol_daily.get(sym)
         if daily is None or daily.empty:
