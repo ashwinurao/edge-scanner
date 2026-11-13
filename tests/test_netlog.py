@@ -244,7 +244,8 @@ def test_bars_lines_worked_by_hand_three_symbols_two_minutes_one_without_a_bar(n
     lat.seen(_frame([("A", "14:32")]), at("14:33:02"))                        # A 14:32: +2000
     lat.seen(_frame([("A", "14:32"), ("B", "14:32")]), at("14:33:07"))        # B 14:32: +7000
     lat.seen(_frame([("B", "14:32"), ("C", "14:32")]), at("14:33:12"))        # C 14:32: +12000
-    lat.handed([{"timestamp": at("14:31:00")}, {"timestamp": at("14:31:00")}], at("14:32:06.5"))
+    lat.handed([{"symbol": "A", "timestamp": at("14:31:00"), "volume": 1.0, "close": 1.0},
+                {"symbol": "B", "timestamp": at("14:31:00"), "volume": 1.0, "close": 1.0}], at("14:32:06.5"))
     lat.moved_past(at("14:32:30"))          # the poll asks from 14:32:30: 14:31 is done
     lat.moved_past(at("14:33:30"))          # 14:32 is done
     first, second = nl("bars")
@@ -253,10 +254,36 @@ def test_bars_lines_worked_by_hand_three_symbols_two_minutes_one_without_a_bar(n
     assert (first["expected"], first["with_bar"]) == (3, 2)
     assert first["first_seen_ms_after_close"] == {"min": 1500.0, "p50": 1500.0, "p95": 6500.0, "max": 6500.0}
     assert (first["handed"], first["handed_ms_after_close"]) == (2, {"min": 6500.0, "p50": 6500.0, "p95": 6500.0, "max": 6500.0})
+    assert (first["seen_before_close"], first["changed_after_handed"], first["max_volume_change_pct"]) == (0, 0, None)
     # 14:32: A 2000, B 7000, C 12000. p50 = 2nd of 3, p95 = 3rd of 3.
     assert second["with_bar"] == 3
     assert second["first_seen_ms_after_close"] == {"min": 2000.0, "p50": 7000.0, "p95": 12000.0, "max": 12000.0}
     assert (second["handed"], second["handed_ms_after_close"]) == (0, None)
+
+
+def _frame_v(rows):
+    """Bars with volume and close: (symbol, HH:MM, volume, close)."""
+    idx = pd.MultiIndex.from_tuples([(s, pd.Timestamp(t, tz="UTC")) for s, t, _, _ in rows], names=["symbol", "timestamp"])
+    return pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": [c for *_, c in rows],
+                         "volume": [v for _, _, v, _ in rows]}, index=idx)
+
+
+def test_bars_line_counts_bars_seen_before_close_and_bars_that_change_after_the_hand_over(nl):
+    at = lambda hhmmss: datetime.fromisoformat(f"2026-11-13T{hhmmss}+00:00")
+    lat = netlog.BarLateness(expected=3, started=at("14:30:10"))
+    lat.seen(_frame_v([("C", "14:31", 50, 5.0)]), at("14:31:58"))                       # C: -2000, before close
+    lat.seen(_frame_v([("A", "14:31", 100, 10.0), ("B", "14:31", 200, 20.0)]), at("14:32:03"))
+    lat.handed([{"symbol": "A", "timestamp": at("14:31:00"), "volume": 100.0, "close": 10.0},
+                {"symbol": "B", "timestamp": at("14:31:00"), "volume": 200.0, "close": 20.0}], at("14:32:03.5"))
+    # Later answers: A grows to 130 (+30 %), then 125 (+25 %); B stays as handed.
+    lat.seen(_frame_v([("A", "14:31", 130, 10.05), ("B", "14:31", 200, 20.0)]), at("14:32:08.5"))
+    lat.seen(_frame_v([("A", "14:31", 125, 10.05), ("B", "14:31", 200, 20.0)]), at("14:32:13.5"))
+    lat.moved_past(at("14:32:30"))
+    (line,) = nl("bars")
+    assert (line["with_bar"], line["seen_before_close"]) == (3, 1)
+    # C -2000, A 3000, B 3000: p50 = 2nd of 3 = 3000
+    assert line["first_seen_ms_after_close"] == {"min": -2000.0, "p50": 3000.0, "p95": 3000.0, "max": 3000.0}
+    assert (line["changed_after_handed"], line["max_volume_change_pct"]) == (1, 30.0)
 
 
 def _poll(fetch, passes, every=0.0, clock=lambda: T0, symbols=("AAPL", "MSFT")):
@@ -288,6 +315,46 @@ def test_the_poll_writes_one_call_per_pass_and_flags_an_overrun(nl):
     assert call["data_ts"] == "2026-11-13T14:32:00.000+00:00"     # 14:31 bar's end
     (note,) = [x for x in nl("note") if x["text"] == "bar poll start"]
     assert (note["symbols_n"], note["batches"]) == (2, 1)
+
+
+def test_the_callbacks_run_before_any_lateness_work_and_first_seen_uses_the_arrival_time(nl, monkeypatch):
+    # Pass 1 (09:31:30 ET) gets nothing; pass 2 (09:32:30) gets AAPL's 09:31 bar, which arrives at
+    # 14:32:30.5 UTC. The scanner's callback then takes 5 s. first_seen must be 30,500 ms, not 35,500.
+    wall = [T0]
+    monkeypatch.setattr(netlog, "_wall", lambda: wall[0])
+    order, lats = [], []
+    seen, handed = netlog.BarLateness.seen, netlog.BarLateness.handed
+
+    def spy_seen(self, df, at=None):
+        order.append("seen")
+        lats.append(self)
+        return seen(self, df, at)
+
+    def spy_handed(self, bars, at=None):
+        order.append("handed")
+        return handed(self, bars, at)
+    monkeypatch.setattr(netlog.BarLateness, "seen", spy_seen)
+    monkeypatch.setattr(netlog.BarLateness, "handed", spy_handed)
+    calls = [0]
+
+    def fetch(syms, start, end):
+        calls[0] += 1
+        wall[0] = end + timedelta(seconds=0.5)
+        return _frame([]) if calls[0] == 1 else _frame([("AAPL", "14:31")])
+
+    def callback(bar):
+        order.append("callback")
+        wall[0] += timedelta(seconds=5)
+
+    from scanner.data import alpaca_poll
+    stop = threading.Event()
+    clock = _seq(T0, T0, T0 + timedelta(minutes=1))
+    alpaca_poll.poll_minute_bars(lambda *a: (stop.set() if calls[0] >= 1 else None) or fetch(*a),
+                                 ["AAPL"], callback, stop, every=0.0, clock=clock)
+    assert order == ["seen", "handed", "callback", "seen", "handed"]
+    m = datetime(2026, 11, 13, 14, 31, tzinfo=UTC)
+    assert lats[-1]._seen[m]["AAPL"] == 30500.0
+    assert lats[-1]._handed[m] == [30500.0]      # handed at 14:32:30.5, before the callback's 5 s
 
 
 def test_the_feeds_own_request_joins_the_poll_pass_so_there_is_one_call_line(nl, clock, tmp_path):
@@ -325,6 +392,19 @@ def test_a_route_line_with_the_two_headers_and_the_route_pattern(nl):
     assert first["ms"] >= 0
     assert (second["route"], second["from"]) == ("/api/bars/{symbol}/{timeframe}", "other") and second["req"]
     assert len(nl("route")) == 2
+
+
+def test_a_refused_request_is_timed_with_its_raw_path_capped_at_200_characters(nl):
+    from starlette.responses import PlainTextResponse
+
+    async def refuse(scope, receive, send):   # stands in for the local guard: no route matched
+        await PlainTextResponse("refused", status_code=403)(scope, receive, send)
+    timer = netlog.RouteTimer(refuse)
+    c = TestClient(timer)
+    long_path = "/api/bars/" + "X" * 500
+    assert c.get(long_path).status_code == 403
+    (line,) = nl("route")
+    assert line["http"] == 403 and line["route"] == long_path[:200] and len(line["route"]) == 200
 
 
 def test_a_call_made_inside_a_route_carries_the_routes_req_id(nl):
@@ -587,6 +667,17 @@ def test_a_line_json_cannot_write_is_skipped_and_counted_and_the_rest_of_the_bat
     odd = [x for x in nl("note") if x["text"] == "decimal and numpy"][0]
     assert (odd["price"], odd["n"], odd["x"]) == ("10.25", "5", 1.5)
     assert netlog.dropped == 1
+
+
+def test_a_log_file_that_cannot_be_written_is_said_once_on_stderr(tmp_path, capsys):
+    (tmp_path / "logs").write_text("a file where the folder should be")
+    handler = netlog._DailyFile(tmp_path / "logs")
+    rec = logging.LogRecord("scanner.test", logging.WARNING, __file__, 1, "poll failed", None, None)
+    for _ in range(3):
+        handler.emit(rec)                     # never raises
+    err = capsys.readouterr().err
+    assert err.count("could not write the log file") == 1 and "Traceback" not in err
+    handler.close()
 
 
 def test_start_writes_a_start_note(nl):

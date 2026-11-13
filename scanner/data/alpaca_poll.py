@@ -86,14 +86,14 @@ def poll_minute_bars(fetch: Callable[[list[str], datetime, datetime], pd.DataFra
         start = max(now - timedelta(minutes=MAX_GAP_MINUTES),
                     min(now - timedelta(minutes=LOOKBACK_MINUTES), last_ok - 2 * _MINUTE))
         lateness.moved_past(start)
-        frames, ok = [], True
+        frames, ok, arrived = [], True, []
         with netlog.call("alpaca_data", "bars_poll", "poller", defer=True,
                          symbols_n=len(symbols), batches=len(batches)) as pass_call:
             for group in batches:
                 try:
                     frames.append(fetch(group, start, now))
                     if pass_call:
-                        lateness.seen(frames[-1])
+                        arrived.append((frames[-1], netlog.now()))   # the record waits until the bars are handed on
                 except Exception as exc:
                     ok = False
                     pass_call.error(exc)
@@ -103,8 +103,7 @@ def poll_minute_bars(fetch: Callable[[list[str], datetime, datetime], pd.DataFra
         df = pd.concat([f for f in frames if f is not None and not f.empty]) if any(
             f is not None and not f.empty for f in frames) else pd.DataFrame()
         handed = closed_bars(df, last, floor, now)
-        if pass_call:
-            lateness.handed(handed)
+        handed_at = netlog.now() if pass_call else None
         for bar in handed:
             try:
                 callback(bar)
@@ -112,7 +111,11 @@ def poll_minute_bars(fetch: Callable[[list[str], datetime, datetime], pd.DataFra
                 log.error("Poll callback error for %s: %s", bar["symbol"], exc, exc_info=True)
         if pass_call:
             # The pass: fetch, sort and hand the bars to the scanner. Longer than `every` is an overrun.
+            # Measured before the record's own work, which comes after the callbacks (PR #44 review).
             pass_ms = (time.monotonic() - t_pass) * 1000
+            for frame, at in arrived:
+                lateness.seen(frame, at)
+            lateness.handed(handed, handed_at)
             pass_call.write(items=len(df), data_ts=netlog.newest_bar_end(df), handed=len(handed),
                             pass_ms=round(pass_ms, 1), overrun=pass_ms > every * 1000)
         if stop.wait(every):

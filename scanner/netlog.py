@@ -111,6 +111,11 @@ def active() -> bool:
     return _started
 
 
+def now() -> datetime:
+    """The UTC wall clock netlog uses (patched by tests)."""
+    return _wall()
+
+
 def _iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="milliseconds")
 
@@ -764,7 +769,14 @@ def _spread(values: list) -> Optional[dict]:
 class BarLateness:
     """How late each minute's bars came, all day: one `bars` line per minute M once the poll
     stops asking for M. first_seen_ms_after_close = when the poll first returned symbol S's bar
-    for M, minus M's end; handed_ms_after_close = when the poll handed it to the scanner."""
+    for M, minus M's end; handed_ms_after_close = when the poll handed it to the scanner.
+    seen_before_close counts symbols first seen before M ended (Alpaca answering with the forming
+    minute). changed_after_handed counts symbols whose volume or close in a later answer differs
+    from the bar handed on, with the largest volume change (signed, % of the handed volume): is
+    SETTLE_SECONDS long enough (architect's review of PR #44, 2026-11-13). Record only.
+
+    The poll calls seen() and handed() after its callbacks, with the times it saved, so this
+    work never delays the hand-over."""
 
     MAX_OPEN_MINUTES = 60
 
@@ -773,16 +785,20 @@ class BarLateness:
         self.started = started
         self._seen: dict[datetime, dict[str, float]] = {}
         self._handed: dict[datetime, list[float]] = {}
+        self._handed_bars: dict[datetime, dict[str, tuple[float, float]]] = {}
+        self._changed: dict[datetime, dict[str, float]] = {}
 
     def seen(self, df: Any, at: Optional[datetime] = None) -> None:
-        """A poll answer arrived at `at` (default now)."""
+        """A poll answer that arrived at `at` (default now)."""
         try:
             if not _started or df is None or getattr(df, "empty", True) or getattr(df.index, "nlevels", 1) < 2:
                 return
             at = at or _wall()
             syms = df.index.get_level_values(0)
             stamps = df.index.get_level_values(1)
-            for sym, ts in zip(syms, stamps):
+            vols = df["volume"].to_numpy() if "volume" in df.columns else [None] * len(df)
+            closes = df["close"].to_numpy() if "close" in df.columns else [None] * len(df)
+            for sym, ts, vol, close in zip(syms, stamps, vols, closes):
                 m = ts.to_pydatetime() if hasattr(ts, "to_pydatetime") else ts
                 m = m if m.tzinfo else m.replace(tzinfo=timezone.utc)
                 end = m + _MINUTE
@@ -792,10 +808,30 @@ class BarLateness:
                 s = str(sym)
                 if s not in d:
                     d[s] = (at - end).total_seconds() * 1000
+                handed = self._handed_bars.get(m, {}).get(s)
+                if handed is not None:
+                    self._compare(m, s, handed, vol, close)
         except Exception:
             pass
 
+    def _compare(self, m: datetime, sym: str, handed: tuple, vol: Any, close: Any) -> None:
+        h_vol, h_close = handed
+        try:
+            vol, close = float(vol), float(close)
+        except (TypeError, ValueError):
+            return
+        if vol != vol or close != close:     # NaN: nothing to compare
+            return
+        if abs(vol - h_vol) <= 1e-9 and abs(close - h_close) <= 1e-9:
+            return
+        pct = (vol - h_vol) / h_vol * 100 if h_vol else 0.0
+        changes = self._changed.setdefault(m, {})
+        old = changes.get(sym)
+        if old is None or abs(pct) > abs(old):
+            changes[sym] = pct
+
     def handed(self, bars: list, at: Optional[datetime] = None) -> None:
+        """Bars the poll handed to the scanner at `at` (default now)."""
         try:
             if not _started:
                 return
@@ -805,6 +841,7 @@ class BarLateness:
                 if m + _MINUTE <= self.started:
                     continue
                 self._handed.setdefault(m, []).append((at - (m + _MINUTE)).total_seconds() * 1000)
+                self._handed_bars.setdefault(m, {})[str(b["symbol"])] = (float(b["volume"]), float(b["close"]))
         except Exception:
             pass
 
@@ -820,10 +857,16 @@ class BarLateness:
             for m in old:
                 seen = self._seen.pop(m, {})
                 handed = self._handed.pop(m, [])
+                self._handed_bars.pop(m, None)
+                changed = self._changed.pop(m, {})
+                biggest = max(changed.values(), key=abs) if changed else None
                 emit("bars", minute=_iso(m), minute_et=m.astimezone(_ET).isoformat(timespec="minutes"),
                      expected=self.expected, with_bar=len(seen),
                      first_seen_ms_after_close=_spread(list(seen.values())),
-                     handed=len(handed), handed_ms_after_close=_spread(handed))
+                     seen_before_close=sum(1 for v in seen.values() if v < 0),
+                     handed=len(handed), handed_ms_after_close=_spread(handed),
+                     changed_after_handed=len(changed),
+                     max_volume_change_pct=_r1(biggest) if biggest is not None else None)
         except Exception:
             pass
 
@@ -932,6 +975,7 @@ def start_loop_monitor() -> None:
 # ── inbound routes ───────────────────────────────────────────────────────────
 
 ROUTE_PREFIXES = ("/api/v2/ov-picks", "/api/v2/clock", "/api/bars/", "/api/v2/health")
+ROUTE_MAX = 200
 _SAFE = re.compile(r"[^A-Za-z0-9_.:-]")
 
 
@@ -985,7 +1029,9 @@ class RouteTimer:
                 if token is not None:
                     _req_var.reset(token)
                 route = scope.get("route")
-                pattern = getattr(route, "path", None) or scope.get("path")
+                # Outermost middleware: it also times requests the local guard refuses, and those
+                # have no route, so the raw path is capped (architect's review of PR #44).
+                pattern = str(getattr(route, "path", None) or scope.get("path"))[:ROUTE_MAX]
                 end = state["done"] or time.monotonic()
                 emit("route", route=pattern, method=scope.get("method"),
                      http=state["http"] if state["http"] is not None else (500 if failed else None),
@@ -1112,6 +1158,7 @@ class _DailyFile(logging.Handler):
         self.directory = Path(directory)
         self._day: Optional[str] = None
         self._f = None
+        self._warned = False
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -1124,8 +1171,15 @@ class _DailyFile(logging.Handler):
                 self._day = day
             self._f.write(self.format(record) + "\n")
             self._f.flush()
-        except Exception:
-            self.handleError(record)
+        except Exception as e:
+            # Not handleError: it prints a traceback for every line once the disk is full. Say it
+            # once on stderr, then stay silent (architect's review of PR #44).
+            if not self._warned:
+                self._warned = True
+                try:
+                    sys.stderr.write(f"edge-scanner: could not write the log file in {self.directory}: {e!r}\n")
+                except Exception:
+                    pass
 
     def close(self) -> None:
         try:
