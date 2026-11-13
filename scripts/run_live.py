@@ -364,6 +364,12 @@ def main() -> None:
         level=getattr(logging, args.log_level.upper(), logging.WARNING),
         format="%(asctime)s %(levelname)-8s %(name)s  %(message)s",
     )
+    # fork: WARNING lines to data/logs/ and a record of every outside call in data/netlog/, both
+    # kept across rebuilds (scanner/netlog.py, brief 11). EDGE_SCANNER_NETLOG=0 turns both off.
+    from scanner import netlog
+    netlog.log_to_file()
+    netlog.start(feed=args.feed, alpaca_feed=(os.environ.get("ALPACA_FEED") or "sip").strip().lower(),
+                 alpaca_stream=os.environ.get("ALPACA_STREAM", "1").strip(), port=args.port)
 
     data_desc = args.feed.capitalize()
     if args.feed == "alpaca":

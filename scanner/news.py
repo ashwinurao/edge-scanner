@@ -35,6 +35,9 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import Callable, Optional
+from urllib.parse import urlsplit
+
+from scanner import netlog
 
 log = logging.getLogger(__name__)
 
@@ -129,9 +132,19 @@ def _rss_sources_from_env() -> tuple[str, ...]:
     return tuple(n for n in (p.strip().lower() for p in raw.split(",")) if n in RSS_FEEDS)
 
 
+def _vendor(url: str) -> str:
+    """Who answers this URL, for scanner/netlog.py."""
+    if url.startswith(NEWS_URL):
+        return "alpaca_news"
+    host = urlsplit(url).netloc
+    return "yahoo" if "yahoo." in host else "nasdaq" if "nasdaq.com" in host else "other"
+
+
 def _default_get(url: str, *, headers: dict, params: dict, timeout: float):
     import requests
-    return requests.get(url, headers=headers, params=params, timeout=timeout)
+    # fork: hooks= adds one netlog line per answer; nothing else about the request changes.
+    return requests.get(url, headers=headers, params=params, timeout=timeout,
+                        **netlog.request_hooks(_vendor(url)))
 
 
 class NewsClient:
@@ -264,24 +277,34 @@ class NewsClient:
             params["end"] = _utc_text(until)
         if syms:
             params["symbols"] = ",".join(syms)
-        resp = self._get(NEWS_URL, headers=self._headers, params=params, timeout=self._timeout)
-        status = getattr(resp, "status_code", 200)
-        if status != 200:
-            raise RuntimeError(f"news HTTP {status}")
-        body = resp.json() or {}
-        return [it for it in (parse_item(a) for a in body.get("news", []) if isinstance(a, dict)) if it]
+        with netlog.call("alpaca_news", "news", "news", symbols_n=len(syms)) as c:
+            resp = self._get(NEWS_URL, headers=self._headers, params=params, timeout=self._timeout)
+            status = getattr(resp, "status_code", 200)
+            c.set(http=status)
+            if status != 200:
+                raise RuntimeError(f"news HTTP {status}")
+            body = resp.json() or {}
+            items = [it for it in (parse_item(a) for a in body.get("news", []) if isinstance(a, dict)) if it]
+            if c:
+                c.seen(items=len(items), data_ts=netlog.newest_iso(it["created_at"] for it in items))
+        return items
 
     def _fetch_rss(self, name: str, symbol: str, cutoff: datetime,
                    until: Optional[datetime] = None) -> list[dict]:
         label, template = RSS_FEEDS[name]
-        resp = self._rss_get(template.format(symbol=symbol), headers=_RSS_HEADERS, params={}, timeout=self._timeout)
-        status = getattr(resp, "status_code", 200)
-        if status != 200:
-            raise RuntimeError(f"{name} HTTP {status}")
-        floor = cutoff.timestamp()
-        # A feed has only its latest items and no end parameter: cut the newer ones here.
-        ceiling = until.timestamp() if until is not None else float("inf")
-        return [it for it in parse_rss(resp.text, symbol, label) if floor <= _epoch(it["created_at"]) <= ceiling]
+        with netlog.call(name, "rss", "news", symbol=symbol) as c:
+            resp = self._rss_get(template.format(symbol=symbol), headers=_RSS_HEADERS, params={}, timeout=self._timeout)
+            status = getattr(resp, "status_code", 200)
+            c.set(http=status)
+            if status != 200:
+                raise RuntimeError(f"{name} HTTP {status}")
+            floor = cutoff.timestamp()
+            # A feed has only its latest items and no end parameter: cut the newer ones here.
+            ceiling = until.timestamp() if until is not None else float("inf")
+            items = [it for it in parse_rss(resp.text, symbol, label) if floor <= _epoch(it["created_at"]) <= ceiling]
+            if c:
+                c.seen(items=len(items), data_ts=netlog.newest_iso(it["created_at"] for it in items))
+        return items
 
 
 def _utc_text(dt: datetime) -> str:
