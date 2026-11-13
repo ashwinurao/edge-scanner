@@ -89,8 +89,11 @@ KEEP_DAYS = 30
 LIVE_SECONDS = 2.0
 # The window's 2 s refresh can land a few ms under 2 s after the last ask; without slack that
 # refresh was skipped and the next ask came 4 s later (PR #45 review, 2026-11-13). So a snapshot
-# is skipped only when the last ask was less than LIVE_SECONDS - LIVE_SLACK_SECONDS ago: at
-# most 34 a minute instead of 30, and only from 09:30 to at most 09:35 ET.
+# is skipped only when the last ask was less than LIVE_SECONDS - LIVE_SLACK_SECONDS ago. One
+# caller on a 2 s refresh still gets about 30 asks a minute. Two or more callers (two open
+# windows, or a window and Edge Trader's Opening plan, which also asks the route every 2 s) can
+# reach the bound: asks at 0, 1.75 ... 59.5 s, so at most 35 in any 60 s, against 30 without
+# the slack. Only from 09:30 to at most 09:35 ET.
 LIVE_SLACK_SECONDS = 0.25
 REFRESH_SECONDS = 2
 REFRESH_FROM_ET = time(9, 29, 45)

@@ -333,7 +333,9 @@ scanner shows the day's picks. It never writes that folder.
   sits against the pre-market range, so OR1 or OR2 can be chosen right after 09:31 (the
   owner's request, 2026-11-08). From 09:30 ET, while the window is open, the route asks Alpaca
   for a snapshot of the day's ranked tickers on each window refresh, never sooner than 1.75 s
-  after the last one (so at most 34 a minute), and the window refreshes every 2 seconds. Just after 09:31 the snapshot's minute bar is the finished 09:30 bar: the
+  after the last one, and the window refreshes every 2 seconds. One window asks about 30 times a
+  minute; two or more callers (two open windows, or a window and Edge Trader's Opening plan) can
+  reach at most 35 in any minute. Just after 09:31 the snapshot's minute bar is the finished 09:30 bar: the
   cells fill from it at once, marked not confirmed (the owner's go, 2026-11-13). On the first
   measured open (2026-11-13) the snapshot had that bar at 09:31:00.1 to 00.7 ET and the bars
   request only at 09:31:01.4 to 06.5, so this is 2 to 5 seconds sooner. The snapshot's day bar

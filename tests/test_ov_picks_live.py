@@ -994,6 +994,18 @@ def test_a_failed_snapshot_is_asked_again_at_the_same_pace(gap, asked):
     assert len(so_far.calls) == (2 if asked else 1)
 
 
-def test_the_slack_is_a_quarter_second_so_at_most_34_snapshots_a_minute():
+@pytest.mark.parametrize("every, asks", [(0.25, 35), (2.0, 30)])
+def test_in_one_minute_callers_get_at_most_35_snapshots_and_one_2s_refresh_gets_30(every, asks):
+    # Asks as often as callers come (two or more windows, or a window and Edge Trader's Opening
+    # plan): the snapshot goes out at 0, 1.75 ... 59.5 s, 35 times. One caller on a 2 s refresh:
+    # 0, 2 ... 58 s, 30 times, as before the slack. Steps of 0.25 s are exact in binary.
     assert (live.LIVE_SECONDS, live.LIVE_SLACK_SECONDS) == (2.0, 0.25)
-    assert int(60 / (live.LIVE_SECONDS - live.LIVE_SLACK_SECONDS)) == 34
+    so_far = FakeSoFar({"AAAA": _so_far(42.9, 43.4, 42.7, 43.1, "2026-11-05 09:30:00")})
+    clock = Clock()
+    store = live.FirstMinuteBars(FakeFetch(), clock=clock, forming=so_far)
+    start, step = clock.t, 0
+    while step * every < 60:
+        clock.t = start + step * every
+        store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:00") + timedelta(seconds=step * every))
+        step += 1
+    assert len(so_far.calls) == asks
