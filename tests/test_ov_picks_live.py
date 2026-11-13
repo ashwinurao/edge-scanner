@@ -583,9 +583,9 @@ def test_during_the_minute_the_store_asks_for_the_minute_so_far_every_two_second
     assert store.get(DAY, ["AAAA"], _et("2026-11-05 09:29:59")).forming == {}     # before the open: nothing
     got = store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:42"))
     assert got.waiting and got.live and got.forming == {"AAAA": _so_far(42.9, 43.4, 42.7, 43.1, "2026-11-05 09:30:41")}
-    clock.t += 1.9
+    clock.t += 1.7
     store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:44"))
-    assert len(so_far.calls) == 1                                                   # within 2 s: served as known
+    assert len(so_far.calls) == 1                                                   # within 1.75 s: served as known
     clock.t += 0.1
     store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:44"))
     assert so_far.calls == [(DAY, ["AAAA"])] * 2 and fetch.calls == []
@@ -643,8 +643,9 @@ def test_from_0931_03_the_bar_replaces_the_minute_so_far_and_is_asked_again_ever
     fetch.bars[DAY]["BBBB"] = _bar(18.3, 18.45, 18.2, 18.4)
     got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:05"))
     assert fetch.calls[1] == (DAY, ["BBBB"]) and got.forming == {} and set(got.bars) == {"AAAA", "BBBB"}
-    # While BBBB had no bar, the snapshot was asked for it alone (brief 20); with both bars, never.
-    assert so_far.calls[1:] == [(DAY, ["BBBB"])]
+    # While BBBB had no bar, the snapshot was asked for it alone (brief 20), 1.9 s apart (the
+    # slack, LIVE_SLACK_SECONDS); with both bars, never.
+    assert so_far.calls[1:] == [(DAY, ["BBBB"])] * 2
 
 
 def test_after_0931_30_a_missing_bar_is_asked_again_once_a_minute():
@@ -824,14 +825,14 @@ def test_after_0931_the_snapshot_is_asked_every_two_seconds_but_only_for_tickers
 
     got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:00.5"))     # before the bar is due
     assert got.waiting and got.forming == so_far.minute and fetch.calls == []
-    clock.t += 1.9
-    store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:02.4"))
-    assert len(so_far.calls) == 1                                            # within 2 s: served as known
+    clock.t += 1.7
+    store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:02.2"))
+    assert len(so_far.calls) == 1                                            # within 1.75 s: served as known
     clock.t += 0.1
-    store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:02.5"))
+    store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:02.3"))
     assert len(so_far.calls) == 2
 
-    clock.t += 0.5                                                           # 09:31:03: the bars request, no bar yet
+    clock.t += 0.7                                                           # 09:31:03: the bars request, no bar yet
     got = store.get(DAY, ["AAAA", "BBBB"], _et("2026-11-05 09:31:03"))
     assert fetch.calls == [(DAY, ["AAAA", "BBBB"])] and len(so_far.calls) == 2
     assert got.forming == so_far.minute and not got.waiting                  # the cells keep the snapshot's bar
@@ -951,3 +952,60 @@ def test_the_route_fills_the_columns_from_the_snapshots_0930_bar_before_the_bars
     assert rows["BBBB"][live.FIRST_MINUTE] == _bar(18.30, 18.35, 18.25, 18.30)
     assert {p[live.AS_OF] for p in rows.values()} == {"09:31:00"}
     assert body["refresh_seconds"] == live.REFRESH_SECONDS
+
+
+# ---------------------------------------------------------------- the snapshot's pace (PR #45 review, 2026-11-13)
+# The window refreshes on a 2 s setInterval, so a refresh can land a few ms under 2 s after the
+# last snapshot ask. Without slack that refresh was skipped and the next ask came 4 s later.
+# A snapshot is now skipped only when the last ask was less than LIVE_SECONDS -
+# LIVE_SLACK_SECONDS (1.75 s) ago.
+
+@pytest.mark.parametrize("gap, asked", [(1.99, True), (1.8, True), (1.75, True), (1.7, False)])
+def test_during_the_minute_a_refresh_a_little_under_two_seconds_on_still_asks(gap, asked):
+    so_far = FakeSoFar({"AAAA": _so_far(42.9, 43.4, 42.7, 43.1, "2026-11-05 09:30:41")})
+    clock = Clock()
+    store = live.FirstMinuteBars(FakeFetch(), clock=clock, forming=so_far)
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:42"))
+    clock.t += gap
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:44"))
+    assert len(so_far.calls) == (2 if asked else 1)
+
+
+@pytest.mark.parametrize("gap, asked", [(1.99, True), (1.8, True), (1.7, False)])
+def test_after_0931_the_snapshot_keeps_the_same_pace(gap, asked):
+    fetch = FakeFetch({DAY: {}})
+    so_far = FakeSoFar({"AAAA": _whole(42.9, 43.4, 42.7, 43.1)})
+    clock = Clock()
+    store = live.FirstMinuteBars(fetch, clock=clock, forming=so_far)
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:31:10"))      # the bars request (none yet), then the snapshot
+    clock.t += gap
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:31:12"))
+    assert len(so_far.calls) == (2 if asked else 1)
+
+
+@pytest.mark.parametrize("gap, asked", [(1.99, True), (1.8, True), (1.7, False)])
+def test_a_failed_snapshot_is_asked_again_at_the_same_pace(gap, asked):
+    so_far = FakeSoFar(error=RuntimeError("429 too many requests"))
+    clock = Clock()
+    store = live.FirstMinuteBars(FakeFetch(), clock=clock, forming=so_far)
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:42"))
+    clock.t += gap
+    store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:44"))
+    assert len(so_far.calls) == (2 if asked else 1)
+
+
+@pytest.mark.parametrize("every, asks", [(0.25, 35), (2.0, 30)])
+def test_in_one_minute_callers_get_at_most_35_snapshots_and_one_2s_refresh_gets_30(every, asks):
+    # Asks as often as callers come (two or more windows, or a window and Edge Trader's Opening
+    # plan): the snapshot goes out at 0, 1.75 ... 59.5 s, 35 times. One caller on a 2 s refresh:
+    # 0, 2 ... 58 s, 30 times, as before the slack. Steps of 0.25 s are exact in binary.
+    assert (live.LIVE_SECONDS, live.LIVE_SLACK_SECONDS) == (2.0, 0.25)
+    so_far = FakeSoFar({"AAAA": _so_far(42.9, 43.4, 42.7, 43.1, "2026-11-05 09:30:00")})
+    clock = Clock()
+    store = live.FirstMinuteBars(FakeFetch(), clock=clock, forming=so_far)
+    start, step = clock.t, 0
+    while step * every < 60:
+        clock.t = start + step * every
+        store.get(DAY, ["AAAA"], _et("2026-11-05 09:30:00") + timedelta(seconds=step * every))
+        step += 1
+    assert len(so_far.calls) == asks
