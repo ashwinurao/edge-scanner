@@ -10,6 +10,7 @@ Lifecycle:
 """
 from __future__ import annotations
 
+import functools
 import logging
 from collections import deque
 from datetime import date
@@ -238,6 +239,15 @@ class SymbolState:
         # Last few per-bar M5 RRS values, oldest first, for the rrs_slope condition.
         # Free: they are the tail of the series _maybe_update_rrs_m5 already computes.
         self._rrs_m5_tail: list[float] = []
+        # The newest completed stock and SPY 5-min bars the RRS above was computed
+        # from. M5 RRS reads completed 5-min bars only, so until one of them changes
+        # a recompute gives the same numbers. Rebuilding it in pandas on every 1-min
+        # bar cost ~4 ms a bar and made a restart late in the day take 12-16 minutes
+        # (fork PR "Restart in about a minute").
+        self._rrs_inputs: tuple = (None, None)
+        # Startup seeding (begin_seed / end_seed): the RRS is computed once at the end.
+        self._seeding: bool = False
+        self._rrs_due: bool = False
 
         # System-setup intraday state
         self._pm_high: Optional[float] = None       # premarket 04:00-09:29 high
@@ -344,16 +354,14 @@ class SymbolState:
             self._partial_spy_5m = _aggregate_into_slot(
                 self._partial_spy_5m, self._spy_5m, spy_bar, spy_slot
             )
-            self._maybe_update_rrs_m5()
+            if self._seeding:
+                self._rrs_due = True
+            else:
+                self._maybe_update_rrs_m5()
 
         # Capture 10AM bar open (first 1-min bar at 10:00 ET)
-        if self._open_10am is None:
-            et = pd.Timestamp(bar["timestamp"])
-            if et.tzinfo is None:
-                et = et.tz_localize("UTC")
-            et = et.tz_convert("America/New_York")
-            if et.hour == 10 and et.minute == 0:
-                self._open_10am = bar["open"]
+        if self._open_10am is None and et_min == 10 * 60:
+            self._open_10am = bar["open"]
 
         self._last_close = close
 
@@ -365,12 +373,36 @@ class SymbolState:
         """
         if len(self._stock_5m) < _M5_RRS_MIN_BARS or len(self._spy_5m) < _M5_RRS_MIN_BARS:
             return
+        inputs = (self._stock_5m[-1], self._spy_5m[-1])
+        if inputs[0] is self._rrs_inputs[0] and inputs[1] is self._rrs_inputs[1]:
+            return
+        self._rrs_inputs = inputs
         s_df = _deque_to_df(self._stock_5m)
         b_df = _deque_to_df(self._spy_5m)
         series = compute_rrs_raw(s_df, b_df, M5_LENGTH)
         val = series.iloc[-1]
         self._rrs_m5 = None if pd.isna(val) else float(val)
         self._rrs_m5_tail = [float(v) for v in series.iloc[-(_RRS_TAIL + 1):] if not pd.isna(v)]
+
+    # ── Startup seeding ───────────────────────────────────────────────────────
+
+    def begin_seed(self) -> None:
+        """Start replaying bars that already happened today (startup seeding).
+
+        Between begin_seed() and end_seed(), on_bar updates everything as live,
+        except the M5 RRS: it is computed once, in end_seed(). Only the final
+        value and its tail are read after seeding, and both come from the
+        completed 5-min bars alone, so the result is the same.
+        """
+        self._seeding = True
+        self._rrs_due = False
+
+    def end_seed(self) -> None:
+        """Finish startup seeding: compute the M5 RRS from today's bars once."""
+        self._seeding = False
+        if self._rrs_due:
+            self._rrs_due = False
+            self._maybe_update_rrs_m5()
 
     # ── Read-only properties ──────────────────────────────────────────────────
 
@@ -585,6 +617,10 @@ def _scalar(v) -> float:
     return float(v)
 
 
+# Every stock's bar for a minute carries the same timestamp, so the ET conversion
+# is cached: ~700 stocks share one lookup a minute live, and the startup replay
+# (scanner/startup_seed.py) shares ~1,000 of them across the whole universe.
+@functools.lru_cache(maxsize=4096)
 def _et_minutes(timestamp) -> int:
     """Return minutes since midnight ET for a UTC (or naive-UTC) timestamp."""
     ts = pd.Timestamp(timestamp)
