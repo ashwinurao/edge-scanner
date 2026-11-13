@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo
 
+from scanner import netlog
 from scanner.json_store import AtomicJsonStore
 
 log = logging.getLogger(__name__)
@@ -175,7 +176,11 @@ class FundamentalsCache:
     def fetch_one(self, symbol: str) -> dict:
         """Fetch one symbol synchronously. Never raises; failures come back as ok=False."""
         sym = symbol.upper().strip()
+        # fork: one netlog call line per fetch (scanner/netlog.py). yfinance does not use a hooked
+        # requests session, so its attempts and wire time are not visible; the rate-limit pause is.
+        c = netlog.begin("yahoo", "fundamentals", "stock_info", symbol=sym)
         self._wait_cooldown()
+        c.waited("wait_pause_ms")
         now = datetime.now(_ET)
         entry: dict = {
             "symbol": sym, "fetched_at": now.isoformat(timespec="seconds"), "ok": False,
@@ -203,7 +208,9 @@ class FundamentalsCache:
             })
             entry["next_earnings"] = _next_earnings(t, now)
             self._cool_s = _COOLDOWN_MIN_S
+            c.end_call()
         except Exception as exc:
+            c.end_call(exc)
             entry["ok"] = False
             entry["error"] = str(exc)[:200]
             if _is_rate_limit(exc):
