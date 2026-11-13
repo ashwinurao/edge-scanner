@@ -94,7 +94,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
-from scanner import ov_picks_live, past_day
+from scanner import open_recorder, ov_picks_live, past_day
 from scanner.ov_picks_day import register_morning
 
 log = logging.getLogger(__name__)
@@ -140,6 +140,9 @@ def register(app: FastAPI, app_state: Any,
     """
     now = clock or (lambda: datetime.now(_ET))
     register_morning(app, app_state, clock=clock)
+    # The opening recorder (scanner/open_recorder.py) measures the real open, so it keeps
+    # the real clock. Off without OV_PICKS_DIR or with OPEN_RECORDER=0.
+    open_recorder.register(app, app_state)
     feed = getattr(app_state, "feed", None)
     if first_minute_fetch is None:
         first_minute_fetch = ov_picks_live.alpaca_fetch(feed)
