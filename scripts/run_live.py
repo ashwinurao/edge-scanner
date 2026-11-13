@@ -58,6 +58,7 @@ from scanner.fundamentals import start_background_prefetch  # Dashboard V2 Stock
 from scanner import plugins
 from scanner.alert_sink import AlertSink
 from scanner.universe import load_universe
+from scanner import startup_seed
 
 log = logging.getLogger(__name__)
 
@@ -498,44 +499,13 @@ def main() -> None:
     # restart — and once bars_5m_count >= 12, gate_rrs_d1 returns
     # passed=False (rrs_unavailable), blocking all alerts permanently.
     print("       Seeding today's intraday state (VWAP + levels + 5-min bars) ...", flush=True)
-    spy_bar_map: dict = {}
-    for spy_ts, spy_row in today_spy.iterrows():
-        spy_bar_map[spy_ts] = {
-            "symbol":    "SPY",
-            "timestamp": spy_ts,
-            "open":      float(spy_row["open"]),
-            "high":      float(spy_row["high"]),
-            "low":       float(spy_row["low"]),
-            "close":     float(spy_row["close"]),
-            "volume":    float(spy_row["volume"]),
-        }
+    spy_bar_map = startup_seed.spy_bar_map(today_spy)
     seeded_from_bars: set[str] = set()
     try:
         all_syms = scanner.ranked_symbols()      # most liquid first: a provider may seed only the top
         today_bars = feed.get_todays_bars_multi(all_syms, "1Min")
-        for sym, sym_bars in today_bars.items():
-            state = scanner._states.get(sym)
-            if state is None or sym_bars.empty:
-                continue
-            state._reset_intraday()  # clear any partial state from warmup
-            for ts, row in sym_bars.iterrows():
-                _bar = {
-                    "symbol":    sym,
-                    "timestamp": ts,
-                    "open":      float(row["open"]),
-                    "high":      float(row["high"]),
-                    "low":       float(row["low"]),
-                    "close":     float(row["close"]),
-                    "volume":    float(row["volume"]),
-                }
-                state.on_bar(_bar, spy_bar_map.get(ts))
-                # The candle rings too, in the same order as live. They hold the
-                # day's high and low, the opening-range candle and today's candles
-                # for every composed trigger. Left empty, a start after the open
-                # made each new local high a "new high of day" for the rest of the
-                # session and left the opening range undefined.
-                scanner._advance_series(state, _bar)
-            seeded_from_bars.add(sym)
+        # scanner/startup_seed.py; the 5-min RRS is computed once per stock at the end.
+        startup_seed.replay_today(scanner, today_bars, spy_bar_map, seeded_from_bars)
         print(
             f"       {len(seeded_from_bars)}/{len(all_syms)} symbols seeded from bars"
             f"  ({len(all_syms) - len(seeded_from_bars)} missing)",

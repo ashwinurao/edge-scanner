@@ -190,7 +190,11 @@ of daily history; extra flags are passed through, for example `./start_scanner.s
 2. **Sector map**: maps symbols to their sector ETFs (refreshed weekly).
 3. **Daily history**: refreshes the daily bar cache.
 4. **Intraday history**: refreshes the 5-minute bar cache used for relative volume.
-5. **Warmup**: seeds every symbol's state from that history.
+5. **Warmup**: seeds every symbol's state from that history. A start after 04:00 ET also replays
+   today's 1-minute bars so far into every symbol (VWAP, high and low, 5-minute bars, relative
+   strength vs SPY). No setup sees the replayed bars, so nothing from before the start alerts. The
+   replay takes seconds even late in the day: the 5-minute relative strength is worked out once per
+   symbol at its end, not on every replayed bar (`scanner/startup_seed.py`).
 6. **Live stream**: opens **one** Alpaca market-data WebSocket and starts scanning 1-minute bars.
 
 When it is live, open **http://localhost:7777** in a browser (it redirects to the dashboard at `/v2/`).
