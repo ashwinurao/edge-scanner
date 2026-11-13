@@ -42,8 +42,9 @@ newest KEEP_DAYS files are kept. Line kinds:
 
 - start:    the day's tickers and the settings, once per run.
 - snapshot: per ticker the latest trade and quote with their own times, the latest minute
-            bar and the day bar. Before 09:31 the day bar is the first minute so far (it
-            counts only regular-hours trades; see scanner/ov_picks_live.py).
+            bar and the day bar. The first measured open (2026-11-13) showed the day bar is
+            the PRIOR day's until about 09:31:00.65 ET, and the minute bar is the finished
+            09:30 bar from about 09:31:00.1 ET (brief 15, scanner/open_tape.py).
 - bars:     the 09:30 ET bar of each ticker that has one, and the tickers still missing.
 - stop:     the recorder stopped early for the day, and why.
 
@@ -55,6 +56,10 @@ the next one waits ERROR_PAUSE_SECONDS. A rate-limit answer (HTTP 429) stops the
 until the next day, so it can never crowd out the scanner's own requests. It runs in its
 own thread: the Alpaca client sets no time limit on a request, and a request that hangs
 must hold up nothing but the recorder.
+
+The open tape (scanner/open_tape.py, brief 15) gets each line as it is written, so
+GET /api/v2/ov-picks/open-tape can serve the newest reading from memory. A tape that fails
+changes nothing here: the line is still written, and the requests stay the same.
 
 On when the scanner starts with OV_PICKS_DIR set (the picks are on) and an Alpaca feed.
 OPEN_RECORDER=0 in .env turns it off. Without OV_PICKS_DIR it is off, so the test suite
@@ -144,7 +149,7 @@ class OpenRecorder:
                  out_dir: Path = OUT_DIR, feed_name: str = "",
                  clock: Optional[Callable[[], datetime]] = None,
                  monotonic: Callable[[], float] = _time.monotonic,
-                 load_contract: Optional[Callable[[], Any]] = None) -> None:
+                 load_contract: Optional[Callable[[], Any]] = None, tape: Any = None) -> None:
         self.picks_dir = Path(picks_dir)
         self.out_dir = Path(out_dir)
         self.feed_name = feed_name
@@ -153,6 +158,7 @@ class OpenRecorder:
         self._clock = clock or (lambda: datetime.now(_ET))
         self._monotonic = monotonic
         self._load_contract = load_contract or ov_picks_day._import_contract
+        self._tape = tape               # scanner/open_tape.py's OpenTape, or None
         self._state: Optional[_Day] = None
         self._stop = threading.Event()
         self.thread: Optional[threading.Thread] = None
@@ -294,6 +300,12 @@ class OpenRecorder:
         return self.out_dir / f"{day.isoformat()}.jsonl"
 
     def _write(self, day: date, rec: dict) -> None:
+        if self._tape is not None:
+            try:
+                # Before the file: the tape is memory only, and a full disk must not starve it.
+                self._tape.publish(rec)
+            except Exception:
+                pass    # OpenTape.publish never raises; a stand-in that does must not stop the line
         self.out_dir.mkdir(parents=True, exist_ok=True)
         with open(self._path(day), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
@@ -453,21 +465,31 @@ def _conditions(value: Any) -> Optional[list[str]]:
 # ---------------------------------------------------------------- starting it with the app
 
 def from_env(app_state: Any, clock: Optional[Callable[[], datetime]] = None,
-             out_dir: Path = OUT_DIR) -> Optional[OpenRecorder]:
-    """An OpenRecorder for this scanner, or None when it is off (see the module text)."""
+             out_dir: Path = OUT_DIR, tape: Any = None) -> Optional[OpenRecorder]:
+    """An OpenRecorder for this scanner, or None when it is off (see the module text).
+    When it is off, `tape` (scanner/open_tape.py) is told why."""
     folder = (os.environ.get(ov_picks_day.ENV_VAR) or "").strip()
     if not folder:
-        return None     # scanner/ov_picks_day.py already logs that the picks are off
+        # scanner/ov_picks_day.py already logs that the picks are off
+        _off(tape, f"the OV picks are not set up ({ov_picks_day.ENV_VAR} is not set)")
+        return None
     if (os.environ.get(ENV_VAR) or "").strip().lower() in OFF_VALUES:
         log.info("opening recorder: off (%s is set to off).", ENV_VAR)
+        _off(tape, f"the opening recorder is off ({ENV_VAR} is set to off)")
         return None
     feed = getattr(app_state, "feed", None)
     snapshots = alpaca_snapshots(feed)
     if snapshots is None:
         log.info("opening recorder: off (this scanner has no Alpaca market data feed).")
+        _off(tape, "the opening recorder is off (this scanner has no Alpaca market data feed)")
         return None
     return OpenRecorder(Path(folder), snapshots, alpaca_bars(feed), out_dir=out_dir,
-                        feed_name=_feed_name(), clock=clock)
+                        feed_name=_feed_name(), clock=clock, tape=tape)
+
+
+def _off(tape: Any, why: str) -> None:
+    if tape is not None:
+        tape.recorder_off(why)
 
 
 def _feed_name() -> str:
@@ -479,20 +501,23 @@ def _feed_name() -> str:
 
 
 def register(app: Any, app_state: Any, clock: Optional[Callable[[], datetime]] = None,
-             out_dir: Path = OUT_DIR) -> None:
+             out_dir: Path = OUT_DIR, tape: Any = None) -> None:
     """Start the recorder's thread when the app starts, if it is on then, and stop it when
-    the app stops."""
+    the app stops. `tape` (scanner/open_tape.py) gets each line and whether the recorder is on."""
 
     async def _start_open_recorder() -> None:
         try:
-            recorder = from_env(app_state, clock=clock, out_dir=out_dir)
+            recorder = from_env(app_state, clock=clock, out_dir=out_dir, tape=tape)
         except Exception:
             # The recorder is a measuring tool: it must never stop the scanner from starting.
             log.exception("opening recorder: could not be set up, so it is off.")
+            _off(tape, "the opening recorder could not be set up (see the scanner's log)")
             return
         if recorder is None:
             return
         app.state.open_recorder = recorder
+        if tape is not None:
+            tape.recorder_on()
         recorder.start()
         log.info("opening recorder: on, weekdays %s to %s ET, writing to %s", FROM_ET.isoformat(),
                  UNTIL_ET.isoformat(), recorder.out_dir)
