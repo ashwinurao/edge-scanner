@@ -79,6 +79,12 @@ each day up to today with a history file (contract.history_days). It checks only
 the file is there; the day's own answer says whether it can be used.
 Its answer has every key in DAYS_FIELDS, with the same set_up and reason_code meanings.
 
+GET /api/v2/ov-picks/open-tape serves the open tape (scanner/open_tape.py, brief 15 of the
+OV entries build): what the opening recorder (scanner/open_recorder.py) last read from Alpaca
+for the day's top picks, from memory, for Edge Trader's armed plan. It makes no request and
+reads no file. Its answer is OpenTape.view's, with Cache-Control: no-store; with the recorder
+off, or outside its window, `state` says so.
+
 register() also starts the day watchlist and the one daily notice
 (scanner/ov_picks_day.py, ticket #20). Those are off unless OV_PICKS_DIR is set when the
 scanner starts.
@@ -97,13 +103,14 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
-from scanner import open_recorder, ov_picks_live, past_day
+from scanner import open_recorder, open_tape, ov_picks_live, past_day
 from scanner.ov_picks_day import register_morning
 
 log = logging.getLogger(__name__)
 
 ROUTE = "/api/v2/ov-picks"
 DAYS_ROUTE = "/api/v2/ov-picks/days"
+TAPE_ROUTE = "/api/v2/ov-picks/open-tape"
 ENV_VAR = "OV_PICKS_DIR"
 
 NOT_SET_UP = "NOT_SET_UP"
@@ -144,8 +151,11 @@ def register(app: FastAPI, app_state: Any,
     now = clock or (lambda: datetime.now(_ET))
     register_morning(app, app_state, clock=clock)
     # The opening recorder (scanner/open_recorder.py) measures the real open, so it keeps
-    # the real clock. Off without OV_PICKS_DIR or with OPEN_RECORDER=0.
-    open_recorder.register(app, app_state)
+    # the real clock. Off without OV_PICKS_DIR or with OPEN_RECORDER=0. The open tape
+    # (scanner/open_tape.py, brief 15) keeps its newest lines in memory for TAPE_ROUTE.
+    tape = open_tape.OpenTape(open_recorder.FROM_ET, open_recorder.UNTIL_ET, open_recorder.BAR_ET)
+    app.state.open_tape = tape
+    open_recorder.register(app, app_state, tape=tape)
     feed = getattr(app_state, "feed", None)
     if first_minute_fetch is None:
         first_minute_fetch = ov_picks_live.alpaca_fetch(feed)
@@ -168,6 +178,20 @@ def register(app: FastAPI, app_state: Any,
                         asked_date=asked.strip() or None, reason=_error_reason(exc))
         fill_live(body, bars, at)
         return JSONResponse(body)
+
+    # Memory only: no Alpaca request and no file read, so Edge Trader may ask it often.
+    @app.get(TAPE_ROUTE)
+    def ov_picks_open_tape() -> JSONResponse:
+        at = now()
+        try:
+            body = tape.view(at)
+        except Exception as exc:
+            log.exception("ov_picks_route: serving the open tape failed")
+            body = {"v": open_tape.VERSION, "seq": None, "now": None, "day": None, "tickers": [],
+                    "reference": None, "snapshot": None, "bars": {}, "poll_seconds": None,
+                    "state": {"code": open_tape.ERROR, "why": f"the open tape could not be read "
+                              f"({type(exc).__name__}: {exc})", "error": None}}
+        return JSONResponse(body, headers={"Cache-Control": "no-store"})
 
     @app.get(DAYS_ROUTE)
     def ov_picks_days() -> JSONResponse:

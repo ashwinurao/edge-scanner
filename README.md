@@ -367,6 +367,24 @@ scanner shows the day's picks. It never writes that folder.
   answer stops it until the next day. It runs in its own thread, so a slow answer holds up
   nothing else. `OPEN_RECORDER=0` in `.env` turns it off. The code is in
   `scanner/open_recorder.py`.
+- **The open tape** (brief 15 of the OV entries build, for Edge Trader's armed plan).
+  `GET /api/v2/ov-picks/open-tape` serves what the opening recorder just read, from memory: the
+  day, the top picks in rank order and SPY (`tickers`, `reference`), the newest good snapshot
+  (`snapshot`: its `t0`, `t1`, `ms` and per ticker the trade, quote, minute bar and day bar as the
+  recorder writes them), every 09:30 ET bar seen so far per ticker (`bars`: the snapshot's minute
+  bar once it is the 09:30 bar, and the bars request's, each with `seen`, the `t1` it was first
+  seen, and a new entry only when it changed), the recorder's `state` (`recording`, `waiting`,
+  `outside` its window, `stopped` for the day, or `off`, with `why` and the last failed request),
+  `seq` (rises with each change), `now` and `poll_seconds`. It answers with
+  `Cache-Control: no-store`, makes no Alpaca request and reads no file, so Edge Trader may ask it
+  several times a second. Yesterday's tape is never served. The recorder's requests and file do
+  not change, and a tape that fails changes nothing the recorder asks or writes. On 2026-11-13 the
+  snapshot's day bar stayed the PRIOR day's until 09:31:00.65 ET, and the minute bar became the
+  09:30 bar at 09:31:00.08-0.65 ET, so the tape never takes a day bar as the first minute. Not
+  confirmed: whether the minute bar can change after it first shows the 09:30 bar (one day's file
+  says no; a change would show as a second `snapshot` entry). Each request writes one `route` line
+  to the netlog (about 190 bytes; at 4 a second from 09:25 to 09:36 ET about 0.5 MB a day). The
+  code is in `scanner/open_tape.py`.
 - Without `OV_PICKS_DIR` (when the scanner starts) none of this runs, and the window says so.
   `python scripts/ov_picks_demo.py --sample frozen` shows the window on a sample day, on
   127.0.0.1:7787, without keys or market data (`--sample preview --at "2026-11-05 09:14:30"` for
