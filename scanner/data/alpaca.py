@@ -17,6 +17,7 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
+from scanner import netlog
 from scanner.cache import parquet
 from scanner.data.interface import DataFeed, Timeframe
 
@@ -76,6 +77,8 @@ class AlpacaFeed(DataFeed):
         api_key = os.environ["ALPACA_API_KEY"]
         secret_key = os.environ["ALPACA_SECRET_KEY"]
         self._client = StockHistoricalDataClient(api_key, secret_key)
+        # fork: one line per Alpaca answer, through alpaca-py's own requests session (scanner/netlog.py)
+        netlog.attach(getattr(self._client, "_session", None), "alpaca_data")
         self._cache_dir = Path(cache_dir)
         self._intraday_cache_dir = Path(intraday_cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -138,8 +141,11 @@ class AlpacaFeed(DataFeed):
             feed=market_data_feed(),
             adjustment=_ADJUST,
         )
-        bars = self._client.get_stock_bars(request)
-        df = bars.df
+        with netlog.call("alpaca_data", "bars", "history", symbols_n=1) as c:
+            bars = self._client.get_stock_bars(request)
+            df = bars.df
+            if c:
+                c.seen(items=len(df))
         if isinstance(df.index, pd.MultiIndex):
             df = df.xs(symbol, level="symbol")
         df.index = pd.to_datetime(df.index, utc=True)
@@ -249,7 +255,12 @@ class AlpacaFeed(DataFeed):
         """1-minute bars for many symbols, unadjusted like the stream's. Used by ALPACA_STREAM=0."""
         req = StockBarsRequest(symbol_or_symbols=symbols, timeframe=TimeFrame.Minute,
                                start=start, end=end, feed=market_data_feed())
-        return self._client.get_stock_bars(req).df
+        # Inside the poll's pass this joins the pass's call line (scanner/data/alpaca_poll.py).
+        with netlog.call("alpaca_data", "bars_recent", "recent_bars", symbols_n=len(symbols)) as c:
+            df = self._client.get_stock_bars(req).df
+            if c:
+                c.seen(items=len(df), data_ts=netlog.newest_bar_end(df))
+        return df
 
     def get_bars_range(
         self,
@@ -268,8 +279,11 @@ class AlpacaFeed(DataFeed):
             feed=market_data_feed(),
             adjustment=_ADJUST,
         )
-        bars = self._client.get_stock_bars(request)
-        df = bars.df
+        with netlog.call("alpaca_data", "bars", "chart", symbols_n=1, timeframe=timeframe) as c:
+            bars = self._client.get_stock_bars(request)
+            df = bars.df
+            if c:
+                c.seen(items=len(df))
         if isinstance(df.index, pd.MultiIndex):
             df = df.xs(symbol, level="symbol")
         df.index = pd.to_datetime(df.index, utc=True)
@@ -296,8 +310,11 @@ class AlpacaFeed(DataFeed):
             feed=market_data_feed(),
             adjustment=_ADJUST,
         )
-        bars = self._client.get_stock_bars(request)
-        df = bars.df
+        with netlog.call("alpaca_data", "bars", "today", symbols_n=1, timeframe=timeframe) as c:
+            bars = self._client.get_stock_bars(request)
+            df = bars.df
+            if c:
+                c.seen(items=len(df))
         if isinstance(df.index, pd.MultiIndex):
             df = df.xs(symbol, level="symbol")
         df.index = pd.to_datetime(df.index, utc=True)
@@ -329,20 +346,26 @@ class AlpacaFeed(DataFeed):
             adjustment=_ADJUST,
         )
         delay = 1.0
-        for attempt in range(1, attempts + 1):
-            try:
-                return self._client.get_stock_bars(req).df
-            except Exception as exc:
-                msg = str(exc)
-                retryable = "429" in msg or "rate" in msg.lower() or "timeout" in msg.lower()
-                if not retryable or attempt == attempts:
-                    raise
-                # Jitter so parallel workers do not retry in lockstep.
-                sleep = delay + random.uniform(0, delay / 2)
-                log.warning("bars batch attempt %d/%d failed (%s); retrying in %.1fs",
-                            attempt, attempts, msg[:120], sleep)
-                time.sleep(sleep)
-                delay = min(delay * 2, 30.0)
+        # One call line for the whole batch, our retries included (their sleeps show as between_ms).
+        with netlog.call("alpaca_data", "bars", "warmup", symbols_n=len(symbols)) as c:
+            for attempt in range(1, attempts + 1):
+                try:
+                    df = self._client.get_stock_bars(req).df
+                    if c:
+                        c.seen(items=len(df))
+                        c.set(our_retries=attempt - 1)
+                    return df
+                except Exception as exc:
+                    msg = str(exc)
+                    retryable = "429" in msg or "rate" in msg.lower() or "timeout" in msg.lower()
+                    if not retryable or attempt == attempts:
+                        raise
+                    # Jitter so parallel workers do not retry in lockstep.
+                    sleep = delay + random.uniform(0, delay / 2)
+                    log.warning("bars batch attempt %d/%d failed (%s); retrying in %.1fs",
+                                attempt, attempts, msg[:120], sleep)
+                    time.sleep(sleep)
+                    delay = min(delay * 2, 30.0)
         return pd.DataFrame()
 
     def _fetch_bars_multi(self, symbols: list[str], timeframe: TimeFrame,
@@ -462,8 +485,11 @@ class AlpacaFeed(DataFeed):
                 feed=market_data_feed(),
             adjustment=_ADJUST,
             )
-            bars = self._client.get_stock_bars(req)
-            df = bars.df
+            with netlog.call("alpaca_data", "bars", "today", symbols_n=len(batch), timeframe=timeframe) as c:
+                bars = self._client.get_stock_bars(req)
+                df = bars.df
+                if c:
+                    c.seen(items=len(df), data_ts=netlog.newest_bar_end(df) if timeframe == "1Min" else None)
             if df.empty:
                 return {}
             out: dict[str, pd.DataFrame] = {}
@@ -496,7 +522,10 @@ class AlpacaFeed(DataFeed):
             symbol_or_symbols=symbols,
             feed=market_data_feed(),
         )
-        snaps = self._client.get_stock_snapshot(req)
+        with netlog.call("alpaca_data", "snapshots", "snapshot", symbols_n=len(symbols)) as c:
+            snaps = self._client.get_stock_snapshot(req)
+            if c:
+                c.seen(items=len(snaps), data_ts=netlog.newest_trade(snaps))
 
         result: dict[str, dict] = {}
         for sym, snap in snaps.items():

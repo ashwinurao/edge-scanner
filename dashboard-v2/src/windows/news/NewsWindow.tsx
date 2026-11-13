@@ -3,7 +3,8 @@ import type { NewsConfig, NewsItem } from '../../types'
 import { api } from '../../lib/api'
 import { usePoll } from '../../lib/usePoll'
 import { fmtAge } from '../../lib/time'
-import { useLinkedDay, useLinkedSymbol, linkSymbol } from '../../stores/linkStore'
+import { useLinkedDay, useLinks, linkSymbol } from '../../stores/linkStore'
+import { newsSymbol } from './newsTarget'
 import { Empty, Field, Select, SymbolInput, Toggle } from '../../components/primitives'
 import { ArticleModal } from '../../components/ArticleModal'
 
@@ -11,8 +12,9 @@ import { ArticleModal } from '../../components/ArticleModal'
 const PAST_DAY_HOURS = 72
 
 export function NewsWindow({ win }: { win: NewsConfig }) {
-  const linked = useLinkedSymbol(win, win.symbol)
-  const symbol = win.mode === 'linked' ? linked : null
+  // fork: a linked window follows its group in either mode (newsTarget.ts; Ash, 2026-11-12).
+  const groupSymbol = useLinks(s => (win.link === 'none' ? null : s.symbols[win.link]))
+  const symbol = newsSymbol(win, groupSymbol)
   // fork: a past day sent from the OV picks window (Ash, 2026-11-07): the news ends at that
   // day's 16:00 ET close and covers at least the 3 days before it. Market-wide news stays live.
   const linkedDay = useLinkedDay(win)
@@ -66,6 +68,7 @@ export function NewsSettings({ win, onChange }: { win: NewsConfig; onChange(p: P
         <Field label="Items"><Select value={String(win.limit)} onChange={v => onChange({ limit: Number(v) })} options={['20', '50'].map(v => ({ value: v, label: v }))} /></Field>
       </div>
       <Toggle checked={win.thumbnails} onChange={thumbnails => onChange({ thumbnails })} label="Show thumbnails" />
+      <div className="faint" style={{ fontSize: 11, marginTop: 6 }}>With a link color, the window shows the news for each ticker sent to that color, in either mode. Mode sets what it shows before then.</div>
     </>
   )
 }

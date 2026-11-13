@@ -11,6 +11,7 @@ import { usePoll } from '../lib/usePoll'
 import { api } from '../lib/api'
 import { Menu, MenuHead, MenuItem, MenuSep } from './Menu'
 import { SetupsPanel } from './SetupsPanel'
+import { SpyRvBadge } from './SpyRvBadge'
 import { WINDOW_ICONS, WINDOW_TITLES } from '../windows/defaults'
 
 const WINDOW_ORDER: WindowType[] = ['chart', 'scanner', 'toplist', 'news', 'stockinfo', 'setupcheck', 'watchlist', 'ovpicks', 'clock'] // fork: OV picks card (#20)
@@ -251,6 +252,7 @@ export function TopBar() {
       {clockInfo?.replay && <span className="chip static" style={{ color: 'var(--link-purple)', borderColor: 'var(--link-purple)' }} title="Replaying a past session">REPLAY {clockInfo.replay.date}</span>}
       {session && <span className={`chip static ${session === 'rth' ? 'up' : ''}`} title="Session">{session.toUpperCase()}</span>}
       <span className={`regime ${regime}`} title="SPY regime"><span className="dot" style={{ background: 'currentColor' }} />{regime}</span>
+      <SpyRvBadge info={clockInfo} />
       <span className="clock">{clock}<span className="clock-tz">ET</span></span>
       <span className="sep" />
       {!audioOn && (

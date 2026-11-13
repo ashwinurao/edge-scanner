@@ -1,10 +1,11 @@
 import type { ComponentType } from 'react'
-import type { FeedId, WindowConfig, WindowType } from '../types'
+import type { FeedId, NewsConfig, WindowConfig, WindowType } from '../types'
 import { ScannerWindow, ScannerSettings } from './scanner/ScannerWindow'
 import { ChartWindow, ChartSettings } from './chart/ChartWindow'
 import { ToplistWindow, ToplistSettings } from './toplist/ToplistWindow'
 import { TOPLIST_LABEL } from './defaults'
 import { NewsWindow, NewsSettings } from './news/NewsWindow'
+import { newsSymbol } from './news/newsTarget'
 import { StockInfoWindow } from './stockinfo/StockInfoWindow'
 import { WatchlistWindow, WatchlistSettings } from './watchlist/WatchlistWindow'
 import { ClockWindow, ClockSettings } from './clock/ClockWindow'
@@ -46,7 +47,11 @@ export const WINDOW_REGISTRY: Record<WindowType, WindowDef> = {
   news: {
     component: NewsWindow as unknown as WindowDef['component'],
     settings: NewsSettings as unknown as WindowDef['settings'],
-    subtitle: (w, linked) => ((w as { mode: string }).mode === 'market' ? { text: 'market' } : symSub(w, linked)),
+    // fork: names the ticker a linked window follows in either mode (newsTarget.ts, 2026-11-12).
+    subtitle: (w, linked) => {
+      const sym = newsSymbol(w as NewsConfig, linked)
+      return sym ? { text: sym, strong: true } : (w as NewsConfig).mode === 'market' ? { text: 'market' } : symSub(w, linked)
+    },
   },
   stockinfo: {
     component: StockInfoWindow as unknown as WindowDef['component'],

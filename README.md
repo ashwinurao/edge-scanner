@@ -40,8 +40,8 @@ by name, and settings can only be changed from a page this machine served, so a 
 cannot reach the scanner through your browser.
 
 - **Stays on your machine:** your API keys in `.env`, the setups, universe filters, watchlists and
-  screens you build, the bar caches, and the alert archives. All of it under `data/`, which is
-  gitignored.
+  screens you build, the bar caches, the alert archives, and the record of outside calls and
+  warnings (`data/netlog/`, `data/logs/`). All of it under `data/`, which is gitignored.
 - **Goes out, to your own accounts:** market data requests to Alpaca or Charles Schwab, signed with
   your keys. They see the symbols you scan, as any market-data client would.
 - **Goes out, unauthenticated:** company fundamentals from Yahoo Finance, and per-symbol news
@@ -244,6 +244,37 @@ bars, 1,000 symbols per request. These are Alpaca's own bars, handed on 3 second
 closes, so alerts come a few seconds later than on the stream. The code is in
 `scanner/data/alpaca_poll.py`.
 
+**A record of every outside call (fork).** The scanner writes one JSON line per outside call to
+`data/netlog/YYYY-MM-DD.jsonl` (UTC date), so a slow or failed call, late bars or a shared rate
+limit can be explained afterwards. It is a record only: nothing reads it back, nothing waits for it,
+and a failure to write it never reaches the scanner. `EDGE_SCANNER_NETLOG=0` in `.env` turns it off,
+together with the log file below. The code is in `scanner/netlog.py`. Files are kept; expect about
+15 MB a day, most of it the 5-second bar poll, which runs around the clock. Every line has `ts` (UTC), `kind` and
+`app` (`edge-scanner`); Edge Trader writes the same format.
+
+| kind | one line per |
+|---|---|
+| `answer` | HTTP answer from Alpaca, Alpaca news, Yahoo or Nasdaq RSS, Nasdaq Trader: `vendor`, `path` (no query), `http`, `wire_ms` (send until headers), `bytes`, the vendor's `date`, `retry_after`, and Alpaca's rate-limit headers as `rl_limit`, `rl_remaining`, `rl_reset`. alpaca-py retries a 429 or 504 inside one call; each attempt is its own line. |
+| `call` | logical call, written when it ends: `vendor`, `endpoint`, `purpose` (`poller`, `ov_picks_live`, `chart`, `today`, `history`, `warmup`, `news`, ...), `wait_ms` + `wire_ms` + `between_ms` (retry sleeps, pages) + `after_ms` (body, parsing, DataFrame) = `total_ms`, `attempts`, `http`, `ok`, `error` (`timeout_connect`, `timeout_read`, `tls`, `dns`, `refused`, `reset`, `http_429`, `http_4xx`, `http_5xx`, `other`), `items`, `data_ts` (newest vendor time in the answer) and `data_age_ms`. The bar poll writes one per pass, with `pass_ms`, `handed` and `overrun` (the pass took longer than 5 s). yfinance and the GitHub check do not use a hooked session, so their `attempts` and `wire_ms` are null. |
+| `inflight` | call still open after 2, 5, 10, 30 and 60 s. alpaca-py sets no request timeout, so this is how a hung call shows. |
+| `bars` | minute bar, written once the poll stops asking for that minute: `expected` symbols, `with_bar`, `first_seen_ms_after_close` and `handed_ms_after_close` (min, p50, p95, max over the symbols with a bar), `seen_before_close` (symbols whose bar first came before the minute ended), and `changed_after_handed` with `max_volume_change_pct` (symbols whose volume or close changed in a later answer after the bar was handed on, and the largest volume change in % of the handed volume, signed). The poll does this work after it hands the bars on. |
+| `route` | request to `/api/v2/ov-picks*`, `/api/v2/clock` or `/api/bars/...`: `route`, `http`, `ms`, `from` and `req` (Edge Trader's `X-Edge-App` and `X-Edge-Req` headers). Requests the local-only guard refuses are timed too; they have no route pattern, so `route` is their path, cut at 200 characters. |
+| `lag` | minute: how late a 100 ms heartbeat thread and the web server's event loop wake, threads, CPU seconds, memory, queue, `dropped` lines, calls in flight, live-feed clients. |
+| `note` | start (version, commit when known), the bar poll's start. |
+
+No line holds API keys, request or answer bodies, query strings or `.env` values; error texts have
+URLs cut at the query and the Alpaca keys replaced. `GET /api/v2/diag/net` (read only) sums up the
+calls in memory: per vendor, endpoint and purpose, for the last 5 minutes and since 09:25 ET today,
+the count, errors by class, p50, p95 and max of `wire_ms` and `total_ms`, and the age of the last
+good call; also the lowest `rl_remaining` seen, the calls in flight, the last `lag` and `bars` lines
+and `dropped`. WARNING and worse log lines also go to `data/logs/edge-scanner-YYYY-MM-DD.log` (UTC
+date), so they survive a rebuild of the container.
+
+**SPY RV20 in the top bar (fork).** The top bar shows SPY's 20-day realized volatility next to the
+market regime: red at 10.5 or lower (a calm SPY day), green above. It comes from the SPY daily
+history the scanner already loads, so it adds no network call. See
+[USER_GUIDE: The top bar](USER_GUIDE.md#the-top-bar) and `scanner/spy_rv.py`.
+
 ## OV picks
 
 This fork can show the pre-market ranked list that a separate module, "OV picks", freezes at
@@ -316,6 +347,21 @@ scanner shows the day's picks. It never writes that folder.
   lists them, on the alert feed. The rest of the ranked list stays in the window. It shows in Scanner windows set to all setups. The marker `data/ov_picks/notified.json` keeps
   a restart from sending it twice. A scanner that first sees the picks after 16:00 ET fills the
   watchlist but sends no notice. The code is in `scanner/ov_picks_day.py`.
+- **The opening recorder** (the owner's request, 2026-11-13: "i want to have tracking in today so
+  we have some data to analyze"). On a weekday with top picks, from 09:29:00 to 09:36:00 ET, the
+  scanner saves what Alpaca answers for the day's top picks and SPY: a snapshot every half
+  second, the 09:30 ET bars each second from 09:31:00 until every ticker has one (at most until
+  09:31:30), and the same bars once more from 09:35:30. Each request is one line in
+  `data/open_recorder/YYYY-MM-DD.jsonl` with the time just before and after it, how long it
+  took and what came back, so the age of the data at the open, how the first minute's range
+  forms and when its bar first appears can be measured. A day is about 2 MB, and the newest 90
+  days are kept. It only
+  reads: it changes nothing the scanner scans or shows, places no orders and never opens a
+  websocket (about 870 REST requests a day through the scanner's own data client, two a second
+  at most). A failed request is written down and the next one waits 5 seconds; a rate-limit
+  answer stops it until the next day. It runs in its own thread, so a slow answer holds up
+  nothing else. `OPEN_RECORDER=0` in `.env` turns it off. The code is in
+  `scanner/open_recorder.py`.
 - Without `OV_PICKS_DIR` (when the scanner starts) none of this runs, and the window says so.
   `python scripts/ov_picks_demo.py --sample frozen` shows the window on a sample day, on
   127.0.0.1:7787, without keys or market data (`--sample preview --at "2026-11-05 09:14:30"` for

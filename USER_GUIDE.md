@@ -230,7 +230,7 @@ while dragging to turn off snapping.
 | **Scanner** | The live alert stream. Each window has its own filters: setups, direction, minimum score and symbols. Column picker, row tint, and a sound or text-to-speech per window. **Hold** freezes the list while you read it; new alerts are still collected and sound, the button counts them (Resume +3), and Resume shows them |
 | **Chart** | Intraday and daily candles with extended hours, VWAP (plus a dashed premarket VWAP, 04:00-09:29 ET, when extended hours are shown; display only, the engine's VWAP starts at 09:30), EMAs, daily SMAs, prior-day and premarket levels. On intraday frames (1m to 1H) regular-hours bars (09:30-16:00 ET, by a bar's start time) sit on a darker band, so premarket and after-hours read lighter, and a dashed vertical line marks the first bar of each new ET day. The **ORB ▾** menu adds opening-range breakout studies (OR1 or OR2, flat at 10:00 or 10:30 ET): where the 2026 research backtest entered, stopped and went flat, on every day of 1-minute bars the chart has, past days included. Display only, no orders. See [ORB studies on the chart](#orb-studies-on-the-chart) |
 | **Rankings** | Ranked lists: RVOL leaders, gainers and losers (from the close or the open), 5-minute movers, premarket gainers, losers and volume, and a new high / low of day stream |
-| **News** | Market-wide news, or news for the linked symbol |
+| **News** | News for the ticker last sent to its link color. Mode sets what it shows before then, or when unlinked: market-wide news, or the symbol in its settings |
 | **Stock Info** | Live per-symbol state plus fundamentals |
 | **Watchlist** | Editable symbol lists with live columns |
 | **Clock** | Eastern time, session phase, market regime, SPY and feed health |
@@ -241,6 +241,8 @@ while dragging to turn off snapping.
 
 Give windows the same link color and they follow each other: click a symbol in a Scanner, Rankings or
 Watchlist window and every window of that color (chart, news, stock info, setup check) switches to it.
+A News window follows its color in either mode: "Market-wide" only says what it shows before
+the first ticker is sent to that color.
 
 ### Screens
 
@@ -272,6 +274,15 @@ or `NEWS_RSS_SOURCES=` (empty) for Alpaca only.
   long ago it arrived. In regular hours it turns amber after 90 seconds without a bar and red after three
   minutes: the alert connection can be fine while the data has stopped. The browser tab shows the provider
   too, so two scanners side by side are easy to tell apart.
+- **RV20**, beside the market regime, is SPY's 20-day realized volatility: the sample standard
+  deviation of SPY's last 20 daily close-to-close returns, times the square root of 252, in percent.
+  It is worked out from SPY's daily closes at startup and again before each session (03:30 ET, with
+  the rest of the daily context), so it always runs through the last completed session; the tooltip
+  names that session. It is red at 10.5 or lower (a calm SPY day) and green above. 10.5 comes from the
+  realized-volatility study of 2026-11-11: on calm days OV's top picks lost their OR1/OR2 breakout edge,
+  in 2026 and again out of sample in 2023-2025. There is no middle colour: days at 10.5-12 did as well as
+  days at 12-15. It is display only; no setup or alert reads it. `RV20 –` means fewer than 21 daily
+  closes are loaded. The code is in `scanner/spy_rv.py`.
 - **⋯** holds the rarer controls: save the layout as a new screen, theme, hide the bar, fullscreen.
 
 ### Themes and shortcuts
