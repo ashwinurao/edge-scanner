@@ -399,6 +399,14 @@ def register_v2_routes(app: FastAPI, app_state, **state_kw) -> V2State:
             "data": data_status(app_state),
         }))
 
+    @app.get("/api/v2/spy-rv")
+    async def v2_spy_rv() -> JSONResponse:
+        """SPY RV20 after each of the last 30 closes, for the top bar's history panel (fork,
+        scanner/spy_rv.py). Fetched only when the panel opens, not with the 5 s clock."""
+        from scanner.spy_rv import CALM_MAX
+        return JSONResponse(clean({"current": getattr(scanner, "_spy_rv", None), "calm_max": CALM_MAX,
+                                   "history": getattr(scanner, "_spy_rv_history", None) or []}))
+
     @app.get("/api/v2/toplists")
     async def v2_toplists() -> JSONResponse:
         """Every list with its universe filter and default row count.

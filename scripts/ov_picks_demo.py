@@ -38,7 +38,8 @@ marked not confirmed, for a few seconds first (brief 20):
 
     python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 10:40" --demo-market
 
---spy-rv20 sets a made-up SPY RV20 for the top bar badge (red at 10.5 or lower, green above):
+--spy-rv20 sets a made-up SPY RV20 for the top bar badge (red at 10.5 or lower, green above),
+and a made-up 30-session history for the panel a click on it opens:
 
     python scripts/ov_picks_demo.py --sample frozen --at "2026-11-05 09:25:05" --spy-rv20 9.8
 
@@ -255,6 +256,28 @@ def _demo_so_far(bars, clock):
     return so_far
 
 
+def _demo_rv_history(last: float | None, prior: date) -> list[dict]:
+    """Made-up SPY RV20 for the last 30 weekdays, ending at --spy-rv20 on `prior`, for the top
+    bar's history panel (Ash, 2026-11-13). It starts 4 points higher and wobbles down, so a
+    calm last value crosses the 10.5 line inside the window."""
+    if last is None:
+        return []
+    from scanner import spy_rv
+    days, d = [], prior
+    while len(days) < spy_rv.HISTORY:
+        if d.weekday() < 5:
+            days.append(d)
+        d -= timedelta(days=1)
+    days.reverse()
+    n = len(days)
+    out = []
+    for i, day in enumerate(days):
+        v = last + 4.0 * (n - 1 - i) / (n - 1) + 0.6 * ((i * 7919) % 5 - 2) / 2 * (i < n - 1)
+        r = spy_rv.reading(v, day.isoformat())
+        out.append({"date": r["through"], "rv20": r["rv20"], "calm": r["calm"]})
+    return out
+
+
 def _demo_bars_late(fetch, clock, ready=dtime(9, 31, 6)):
     """The made-up bars request without today's 09:30 bars until `ready` ET: on 2026-11-13 the
     real one had the last of them at 09:31:06.5 (brief 20), so the snapshot's bar shows first."""
@@ -334,7 +357,8 @@ def main() -> None:
     while prior.weekday() >= 5:
         prior -= timedelta(days=1)
     stub = SimpleNamespace(_states={s: object() for s in scanned}, _spy_state=None, _regime=None, _sector_map={},
-                           _spy_rv=spy_rv.reading(args.spy_rv20, prior.isoformat()))
+                           _spy_rv=spy_rv.reading(args.spy_rv20, prior.isoformat()),
+                           _spy_rv_history=_demo_rv_history(args.spy_rv20, prior))
     feed = None
     if args.demo_market:
         from scanner import api_v2
