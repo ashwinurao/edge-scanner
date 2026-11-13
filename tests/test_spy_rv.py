@@ -117,3 +117,68 @@ def test_clock_carries_the_reading_and_none_before_it_is_known():
     scanner._spy_rv = spy_rv.reading(12.345, "2026-11-11")
     assert c.get("/api/v2/clock").json()["spy_rv"] == {
         "rv20": 12.35, "through": "2026-11-11", "calm": False, "calm_max": 10.5}
+
+
+def _steps(steps: list[float], start: float = 100.0) -> list[float]:
+    closes = [start]
+    for s in steps:
+        closes.append(closes[-1] * (1 + s))
+    return closes
+
+
+# 20 returns of +/-1% in turn, then 20 of +/-0.5%: 41 closes, each window has mean 0.
+_PLUS_MINUS = [0.01 if i % 2 == 0 else -0.01 for i in range(20)] + \
+              [0.005 if i % 2 == 0 else -0.005 for i in range(20)]
+
+
+def test_history_is_the_rv20_after_each_close_oldest_first():
+    h = spy_rv.history(_spy_daily(_steps(_PLUS_MINUS)), sessions=30)
+    # 41 closes give RV20 from the 21st close on: 21 values, fewer than the 30 asked for.
+    assert len(h) == 21
+    assert [r["date"] for r in h] == sorted(r["date"] for r in h) and h[-1]["date"] == "2026-11-11"
+    # First value: the 20 one-percent returns, 16.29 (worked above).
+    assert h[0] == {"date": h[0]["date"], "rv20": 16.29, "calm": False}
+    # Tenth close after that: 10 returns of 1% and 10 of 0.5%, mean 0. Sum of squares
+    # 10 x 0.0001 + 10 x 0.000025 = 0.00125; / 19 = 0.0000657895; sqrt = 0.0081111;
+    # x sqrt(252) x 100 = 12.876.
+    assert h[10]["rv20"] == 12.88 and h[10]["calm"] is False
+    # Last: the 20 half-percent returns, 8.14, calm.
+    assert h[-1] == {"date": "2026-11-11", "rv20": 8.14, "calm": True}
+
+
+def test_history_keeps_only_the_last_sessions():
+    h = spy_rv.history(_spy_daily(_steps(_PLUS_MINUS)), sessions=7)
+    assert len(h) == 7 and h[-1]["rv20"] == 8.14 and h[-1]["date"] == "2026-11-11"
+    assert len(spy_rv.history(_spy_daily(_steps(_PLUS_MINUS)))) == 21     # default 30, capped by data
+    assert spy_rv.HISTORY == 30
+
+
+def test_history_without_enough_closes_is_empty():
+    assert spy_rv.history(_spy_daily(_zigzag(0.01)[:20])) == []
+    assert spy_rv.history(None) == []
+
+
+def test_warmup_and_refresh_set_the_history():
+    spy = _spy_daily(_steps(_PLUS_MINUS))
+    sc = LiveScanner([], feed=None)
+    assert sc._spy_rv_history == []
+    sc.warmup(spy, {})
+    assert len(sc._spy_rv_history) == 21 and sc._spy_rv_history[-1]["rv20"] == 8.14
+    sc2 = SimpleNamespace(_states={}, _spy_state=SymbolState.from_history("SPY", spy, spy),
+                          _series={}, _profiles=None, _sector_map={}, _spy_rv=None, _spy_rv_history=[])
+    daily_refresh.apply(sc2, spy, {}, {}, {})
+    assert sc2._spy_rv_history == sc._spy_rv_history
+
+
+def test_spy_rv_route_returns_current_and_history():
+    from fastapi.testclient import TestClient
+    from scanner.api import AppState, create_app
+    from tests.test_api_v2 import FakeScanner, _states
+    scanner = FakeScanner(_states())
+    c = TestClient(create_app(AppState(scanner=scanner, feed=None)))  # type: ignore[arg-type]
+    assert c.get("/api/v2/spy-rv").json() == {"current": None, "calm_max": 10.5, "history": []}
+    spy = _spy_daily(_steps(_PLUS_MINUS))
+    scanner._spy_rv, scanner._spy_rv_history = spy_rv.from_daily(spy), spy_rv.history(spy)
+    body = c.get("/api/v2/spy-rv").json()
+    assert body["current"]["rv20"] == 8.14 and len(body["history"]) == 21
+    assert body["history"][-1] == {"date": "2026-11-11", "rv20": 8.14, "calm": True}

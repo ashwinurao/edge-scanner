@@ -70,6 +70,7 @@ class LiveScanner:
         self._latest_spy_bar: Optional[dict] = None
         self._regime: MarketRegime = MarketRegime.NEUTRAL
         self._spy_rv: Optional[dict] = None    # top bar SPY RV20, fork (scanner/spy_rv.py)
+        self._spy_rv_history: list[dict] = []
         # Data freshness for the dashboard: the newest bar's own time, and the
         # wall clock when a bar last arrived. A connected socket says nothing
         # about whether bars are still flowing; these do.
@@ -156,6 +157,7 @@ class LiveScanner:
         # SPY gets its own SymbolState for intraday VWAP / regime tracking
         self._spy_state = SymbolState.from_history("SPY", spy_daily, spy_daily)
         self._spy_rv = spy_rv.from_daily(spy_daily)
+        self._spy_rv_history = spy_rv.history(spy_daily)
         log.debug("SPY state built")
 
         built = 0

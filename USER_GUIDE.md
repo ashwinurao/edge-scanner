@@ -282,7 +282,9 @@ or `NEWS_RSS_SOURCES=` (empty) for Alpaca only.
   realized-volatility study of 2026-11-11: on calm days OV's top picks lost their OR1/OR2 breakout edge,
   in 2026 and again out of sample in 2023-2025. There is no middle colour: days at 10.5-12 did as well as
   days at 12-15. It is display only; no setup or alert reads it. `RV20 –` means fewer than 21 daily
-  closes are loaded. The code is in `scanner/spy_rv.py`.
+  closes are loaded. Click it to see how it moved: a small chart and a list of RV20 after each of the
+  last 7, 14 or 30 closes, with the 10.5 line dashed and how many of those days were calm. The browser
+  remembers the last choice. The code is in `scanner/spy_rv.py`.
 - **⋯** holds the rarer controls: save the layout as a new screen, theme, hide the bar, fullscreen.
 
 ### Themes and shortcuts
@@ -398,14 +400,16 @@ rest of the list.
 - **Columns that fill from the open** have "live 09:30" under their header: the first
   minute's range in ATR, and the open against the pre-market range (**▲ above** the pre-market
   high, **▼ below** its low, or **inside**). Until 09:30 ET they show a dash, and the tooltip
-  says when they fill. From 09:30:00 they show the first minute so far, with a pulsing dot, and
-  update every 2 seconds: the window refreshes that often until each name has its 09:30 bar
-  (at most until 09:31:30), then goes back to every 15 seconds. The tooltip says the time the
-  values run to. Just after 09:31 the minute's bar replaces them and the dot goes; that is the
-  final value. A name with no trade yet says so. The cells also stay blank, with the reason in
-  the tooltip, when the scanner has no Alpaca feed, a request fails (it asks again within
-  seconds; **Refresh** shows the result), or a name had no trade in the 09:30 minute. A past
-  day fills them from that day's bar (`scanner/ov_picks_live.py`).
+  says when they fill. From 09:30:00 the window refreshes every 2 seconds until each name has
+  its 09:30 bar (at most until 09:31:30), then goes back to every 15 seconds. Just after 09:31
+  the cells fill from Alpaca's snapshot of the 09:30 bar, with a pulsing dot: not confirmed
+  yet, and the tooltip says so. A few seconds later the 09:30 bar request confirms them and
+  the dot goes; that is the final value. If the snapshot shows the minute while it forms, the
+  cells show the minute so far first, with the dot and the time the values run to; on
+  2026-11-13 it did not. A name the snapshot does not show yet says so. The cells also stay
+  blank, with the reason in the tooltip, when the scanner has no Alpaca feed, a request fails
+  (it asks again within seconds; **Refresh** shows the result), or a name had no trade in the
+  09:30 minute. A past day fills them from that day's bar (`scanner/ov_picks_live.py`).
 
 **Click a row** (or focus it and press Enter) to show its ticker in the window's linked charts
 and news, like a watchlist row (the owner's request, 2026-11-07). The row stays marked, so you
@@ -424,7 +428,7 @@ One row is open at a time. When the module says what the row's values mean, the 
 - the name, rank, status and earnings label on one line;
 - **Levels**: the row's prices on one scale, highest at the top: the pre-market high and low
   (orange bar), the prior day's high, low and close (grey bar), the last pre-market price and,
-  from 09:30 ET, the first minute's high, low and open so far, final after 09:31 (blue bar). A bracket on the left shows
+  just after 09:31 ET, the first minute's high, low and open (blue bar), from Alpaca's snapshot until the 09:30 bar confirms it. A bracket on the left shows
   one ATR on the same scale;
 - a **tile** for each number the module explains, coloured like its cell, with the module's
   note; the first-minute tiles also give the dollar width and where the open was;

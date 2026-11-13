@@ -1,7 +1,7 @@
 import type {
   Bar, CheckResult, ClockInfo, CustomSetup, SetupsPayload, EventsPayload, Fundamentals, NewsPayload, PremarketPayload, Screen,
   SettingsPayload, SettingsStats, SnapshotPayload, StockInfo, ToplistPayload, UniverseMetaPayload, Watchlist,
-  MembersResult, ProfilesPayload, UniverseProfile, ToplistsPayload, SetupCheckPayload,
+  MembersResult, ProfilesPayload, UniverseProfile, ToplistsPayload, SetupCheckPayload, SpyRvPayload,
 } from '../types'
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
@@ -41,6 +41,8 @@ export const api = {
   // /api/v2
   capabilities: () => json<Record<string, boolean>>('/api/v2/capabilities'),
   clock: () => json<ClockInfo>('/api/v2/clock'),
+  // fork: SPY RV20 after each of the last 30 closes (scanner/spy_rv.py), for the top bar panel
+  spyRv: () => json<SpyRvPayload>('/api/v2/spy-rv'),
   version: () => json<{ current: string; latest: string | null; available: boolean; url: string; title: string; checked: boolean }>('/api/v2/version'),
   toplist: (name: string, limit: number) => json<ToplistPayload>(`/api/v2/toplists/${name}?limit=${limit}`),
   events: (since: number, limit = 200) => json<EventsPayload>(`/api/v2/events?since=${since}&limit=${limit}`),

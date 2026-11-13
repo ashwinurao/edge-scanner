@@ -28,6 +28,7 @@ _ET = ZoneInfo("America/New_York")
 WINDOW = 20           # returns, so WINDOW + 1 closes
 ANNUALIZE = 252       # trading days a year
 CALM_MAX = 10.5       # at or below: a calm SPY day (see the module docstring)
+HISTORY = 30          # sessions the top bar's history panel can show (Ash: 7, 14 or 30, 2026-11-13)
 
 
 def rv20(closes: Sequence[float]) -> Optional[float]:
@@ -59,6 +60,22 @@ def from_daily(spy_daily: Optional[pd.DataFrame]) -> Optional[dict]:
     if closes.empty:
         return None
     return reading(rv20(closes.tolist()), _et_date(closes.index[-1]))
+
+
+def history(spy_daily: Optional[pd.DataFrame], sessions: int = HISTORY) -> list[dict]:
+    """RV20 as it stood after each of the last `sessions` closes, oldest first: one row per
+    session with {date, rv20, calm}. Each value uses only the 21 closes up to that session, the
+    same number the badge showed the morning after. Sessions without a value are left out."""
+    if spy_daily is None or spy_daily.empty or "close" not in spy_daily:
+        return []
+    closes = spy_daily["close"].dropna()
+    vals, days = closes.tolist(), list(closes.index)
+    out = []
+    for i in range(max(0, len(vals) - sessions), len(vals)):
+        r = reading(rv20(vals[:i + 1]), _et_date(days[i]))
+        if r is not None:
+            out.append({"date": r["through"], "rv20": r["rv20"], "calm": r["calm"]})
+    return out
 
 
 def _et_date(ts) -> Optional[str]:

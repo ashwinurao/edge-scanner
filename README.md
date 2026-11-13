@@ -330,13 +330,18 @@ scanner shows the day's picks. It never writes that folder.
   what each value means.
 - **Columns that fill from the open.** A column the module marks `live` is filled by the
   scanner from the day's 09:30 ET minute: the first minute's range in ATR, and where the open
-  sits against the pre-market range. During the minute they show the minute so far and update
-  every 2 seconds, so OR1 or OR2 can be chosen right after 09:31 (the owner's request,
-  2026-11-08): while the window is open, the route asks Alpaca for a snapshot of the day's
-  ranked tickers at most every 2 seconds, and the window refreshes every 2 seconds. The
-  snapshot's day bar counts only regular-hours trades, so before 09:31 it is the first minute.
-  From 09:31:03 ET the minute's bar replaces it: the route asks Alpaca once per day shown, for
-  that day's ranked tickers, and keeps the answer (the owner's go, 2026-11-07). Both are REST
+  sits against the pre-market range, so OR1 or OR2 can be chosen right after 09:31 (the
+  owner's request, 2026-11-08). From 09:30 ET, while the window is open, the route asks Alpaca
+  for a snapshot of the day's ranked tickers at most every 2 seconds, and the window refreshes
+  every 2 seconds. Just after 09:31 the snapshot's minute bar is the finished 09:30 bar: the
+  cells fill from it at once, marked not confirmed (the owner's go, 2026-11-13). On the first
+  measured open (2026-11-13) the snapshot had that bar at 09:31:00.1 to 00.7 ET and the bars
+  request only at 09:31:01.4 to 06.5, so this is 2 to 5 seconds sooner. The snapshot's day bar
+  can also fill them with the minute so far, but on 2026-11-13 it stayed the prior day's until
+  just after 09:31, so it showed nothing. From 09:31:03 ET the 09:30 bar replaces the
+  snapshot's values and the mark goes: the route asks Alpaca once per day shown, for that day's
+  ranked tickers, and keeps the answer (the owner's go, 2026-11-07). Until a ticker has its
+  bar, the snapshot is asked for it at the same pace, never after 09:35 ET. Both are REST
   requests through the scanner's own data client, never a websocket
   (`scanner/ov_picks_live.py`). Before 09:30 ET, without an Alpaca feed, or when a request
   fails, the cells stay blank and say why. Past days fill from that day's bar.

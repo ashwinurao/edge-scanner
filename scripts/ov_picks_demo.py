@@ -26,14 +26,20 @@ and the longer intraday frames are rolled up from them, so a 5m chart and the ch
 agree (Ash, 2026-11-08). It also makes up each row's 09:30 ET bar
 from the row's levels, so the columns that fill after the open (scanner/ov_picks_live.py)
 show values and tones. Without it the demo has no data feed and those cells stay blank.
-Started inside the 09:30 minute, it also makes up the minute so far, growing towards that
-bar, so the cells update every 2 seconds as they do live (Ash, 2026-11-08):
+Started inside the 09:30 minute, it also makes up Alpaca's snapshot in alpaca-py's shape,
+read by the scanner's own rule (scanner/ov_picks_live.py so_far): during the minute its day
+bar grows towards that bar, so the cells update every 2 seconds (Ash, 2026-11-08); from
+09:31:00 its minute bar is the 09:30 bar, stamped 09:30:00 ET, and the made-up bars request
+answers only from 09:31:06 ET, as on 2026-11-13, so the cells show the snapshot's 09:30 bar,
+marked not confirmed, for a few seconds first (brief 20):
 
     python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 09:30:20" --demo-market
+    python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 09:30:55" --demo-market
 
     python scripts/ov_picks_demo.py --sample meanings --at "2026-11-05 10:40" --demo-market
 
---spy-rv20 sets a made-up SPY RV20 for the top bar badge (red at 10.5 or lower, green above):
+--spy-rv20 sets a made-up SPY RV20 for the top bar badge (red at 10.5 or lower, green above),
+and a made-up 30-session history for the panel a click on it opens:
 
     python scripts/ov_picks_demo.py --sample frozen --at "2026-11-05 09:25:05" --spy-rv20 9.8
 
@@ -52,6 +58,7 @@ import sys
 import time
 import zlib
 from datetime import date, datetime, timedelta, timezone
+from datetime import time as dtime
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -217,21 +224,70 @@ def _demo_first_minute(out_dir: Path):
 
 
 def _demo_so_far(bars, clock):
-    """The made-up 09:30 bar's minute so far at the demo's time: the open first, then the
-    range growing to the bar's by 09:31, so the live cells change every few seconds."""
+    """Alpaca's snapshot of the made-up 09:30 bar at the demo's time, in alpaca-py's shape
+    (a day bar, a minute bar and the latest trade), read by the scanner's own rule
+    (scanner/ov_picks_live.py so_far). During the minute the day bar is today's and grows from
+    the open to the bar's range, with the latest trade at the demo's time, so the live cells
+    change every few seconds. From 09:31:00 the minute bar is the 09:30 bar, stamped with its
+    start (09:30:00 ET) as Alpaca stamps it, and the latest trade is from 09:31 (the opening
+    recorder's file, 2026-11-13; brief 20)."""
+    from scanner.ov_picks_live import so_far as read_snapshots
+
     def so_far(day: date, tickers: list[str]) -> dict:
         now = clock()
-        start = datetime.combine(day, datetime.min.time(), tzinfo=ET).replace(hour=9, minute=30)
+        start = datetime.combine(day, dtime(9, 30), tzinfo=ET)
         share = min(1.0, max(0.05, (now - start).total_seconds() / 60))
-        out = {}
+        snapshots = {}
         for ticker, bar in bars(day, tickers).items():
             o = bar["open"]
-            high, low = o + (bar["high"] - o) * share, o - (o - bar["low"]) * share
-            out[ticker] = {"open": o, "high": round(high, 2), "low": round(low, 2),
-                           "close": round(low + (high - low) * 0.6, 2), "as_of": now}
-        return out
+            high, low = round(o + (bar["high"] - o) * share, 2), round(o - (o - bar["low"]) * share, 2)
+            close = round(low + (high - low) * 0.6, 2)
+            # Alpaca stamps a bar with its start: the day bar at midnight ET, a minute bar at its minute.
+            daily = SimpleNamespace(timestamp=datetime.combine(day, dtime(0), tzinfo=ET),
+                                    open=o, high=high, low=low, close=close)
+            if now >= start + timedelta(minutes=1):
+                minute = SimpleNamespace(timestamp=start, **bar)
+            else:
+                minute = SimpleNamespace(timestamp=start - timedelta(minutes=1), open=o, high=o, low=o, close=o)
+            snapshots[ticker] = SimpleNamespace(daily_bar=daily, minute_bar=minute,
+                                                latest_trade=SimpleNamespace(timestamp=now, price=close))
+        return read_snapshots(snapshots, day)
 
     return so_far
+
+
+def _demo_rv_history(last: float | None, prior: date) -> list[dict]:
+    """Made-up SPY RV20 for the last 30 weekdays, ending at --spy-rv20 on `prior`, for the top
+    bar's history panel (Ash, 2026-11-13). It starts 4 points higher and wobbles down, so a
+    calm last value crosses the 10.5 line inside the window."""
+    if last is None:
+        return []
+    from scanner import spy_rv
+    days, d = [], prior
+    while len(days) < spy_rv.HISTORY:
+        if d.weekday() < 5:
+            days.append(d)
+        d -= timedelta(days=1)
+    days.reverse()
+    n = len(days)
+    out = []
+    for i, day in enumerate(days):
+        v = last + 4.0 * (n - 1 - i) / (n - 1) + 0.6 * ((i * 7919) % 5 - 2) / 2 * (i < n - 1)
+        r = spy_rv.reading(v, day.isoformat())
+        out.append({"date": r["through"], "rv20": r["rv20"], "calm": r["calm"]})
+    return out
+
+
+def _demo_bars_late(fetch, clock, ready=dtime(9, 31, 6)):
+    """The made-up bars request without today's 09:30 bars until `ready` ET: on 2026-11-13 the
+    real one had the last of them at 09:31:06.5 (brief 20), so the snapshot's bar shows first."""
+    def late(day: date, tickers: list[str]) -> dict:
+        now = clock()
+        if now.date() == day and now < datetime.combine(day, ready, tzinfo=ET):
+            return {}
+        return fetch(day, tickers)
+
+    return late
 
 
 def main() -> None:
@@ -274,8 +330,9 @@ def main() -> None:
     # create_app looks register up on the module when it runs (scanner/api.py, the fork
     # line), so the demo hands it the fake clock without a hook in the app itself.
     real_register = ov_picks_route.register
-    first_minute = _demo_first_minute(work / "out") if args.demo_market else None
-    so_far = _demo_so_far(first_minute, clock) if first_minute else None
+    made_up = _demo_first_minute(work / "out") if args.demo_market else None
+    so_far = _demo_so_far(made_up, clock) if made_up else None
+    first_minute = _demo_bars_late(made_up, clock) if made_up else None
     ov_picks_route.register = lambda app, app_state: real_register(app, app_state, clock=clock,
                                                                    first_minute_fetch=first_minute,
                                                                    first_minute_so_far=so_far)
@@ -300,7 +357,8 @@ def main() -> None:
     while prior.weekday() >= 5:
         prior -= timedelta(days=1)
     stub = SimpleNamespace(_states={s: object() for s in scanned}, _spy_state=None, _regime=None, _sector_map={},
-                           _spy_rv=spy_rv.reading(args.spy_rv20, prior.isoformat()))
+                           _spy_rv=spy_rv.reading(args.spy_rv20, prior.isoformat()),
+                           _spy_rv_history=_demo_rv_history(args.spy_rv20, prior))
     feed = None
     if args.demo_market:
         from scanner import api_v2
