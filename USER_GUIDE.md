@@ -490,8 +490,8 @@ request, 2026-11-07):
   they were, with a **past day** badge. The notes are about that day.
 - For a day before the module ran, the window shows OV's own ranked list for it, from the
   module's history files, with the same columns and row details and one of these badges:
-  **OV 2026 rebuild** (OV's current code and settings, run again on clean bars for that day; it
-  can differ from what OV showed live that morning) or **OV live scan** (OV's own live 09:25 ET
+  **OV rebuild** (OV's current code and settings, run again on clean bars for that day, for
+  2020 to 2026; it can differ from what OV showed live that morning, or from OV's stored backtest) or **OV live scan** (OV's own live 09:25 ET
   scan that morning).
 - A day with neither says "Nothing saved for this day": a market holiday, or a day before the
   saved history starts. A file that can't be used says so, with the reason.
