@@ -17,8 +17,9 @@ what they mean, come from the module.
 - open_vs_pm_range: the minute's open against levels.pm_high and levels.pm_low: "above",
   "below" or "inside" (the edges count as inside).
 
-From 09:30:00 ET, today only, the route asks Alpaca for a snapshot of the day's tickers, at
-most every LIVE_SECONDS while the window asks. This is REST polling, never a websocket
+From 09:30:00 ET, today only, the route asks Alpaca for a snapshot of the day's tickers,
+about every LIVE_SECONDS while the window asks (never sooner than LIVE_SECONDS less
+LIVE_SLACK_SECONDS after the last ask, so a refresh that lands a little early still asks). This is REST polling, never a websocket
 (ALPACA_STREAM=0, fork PR #3). A snapshot fills the cells two ways (`so_far`):
 
 - Its minute bar, once that is the 09:30 bar: the whole minute, as of its end (09:31:00).
@@ -83,9 +84,14 @@ FAST_UNTIL_ET = time(9, 31, 30)
 GIVE_UP_ET = time(9, 35)
 RETRY_SECONDS = 60
 KEEP_DAYS = 30
-# The minute so far: one snapshot request for the day's tickers at most this often, and the
+# The minute so far: one snapshot request for the day's tickers about this often, and the
 # window's refresh while the cells are not final ("every 2-3 secs", Ash, 2026-11-08).
 LIVE_SECONDS = 2.0
+# The window's 2 s refresh can land a few ms under 2 s after the last ask; without slack that
+# refresh was skipped and the next ask came 4 s later (PR #45 review, 2026-11-13). So a snapshot
+# is skipped only when the last ask was less than LIVE_SECONDS - LIVE_SLACK_SECONDS ago: at
+# most 34 a minute instead of 30, and only from 09:30 to at most 09:35 ET.
+LIVE_SLACK_SECONDS = 0.25
 REFRESH_SECONDS = 2
 REFRESH_FROM_ET = time(9, 29, 45)
 
@@ -256,14 +262,15 @@ class FirstMinuteBars:
                 del self._days[old]
 
     def _ask_forming(self, day: date, wanted: list[str]) -> None:
-        """Ask the snapshot for `wanted`, unless it was asked within LIVE_SECONDS or is out."""
+        """Ask the snapshot for `wanted`, unless it was asked within LIVE_SECONDS (less the
+        slack, LIVE_SLACK_SECONDS) or is out."""
         if self._forming is None or not wanted:
             return
         with self._lock:
             entry = self._days.setdefault(day, _Day())
             if day in self._forming_busy:
                 return
-            if entry.formed_at is not None and self._clock() - entry.formed_at < LIVE_SECONDS:
+            if entry.formed_at is not None and self._clock() - entry.formed_at < LIVE_SECONDS - LIVE_SLACK_SECONDS:
                 return
             entry.formed_at = self._clock()
             self._forming_busy.add(day)
