@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 @functools.lru_cache(maxsize=4096)
 def _et_minute_and_day(timestamp) -> tuple[int, str]:
     """(minutes since midnight ET, ET date) for a bar time. Cached because every
-    stock's bar for a minute has the same time (fork PR "Restart in about a minute")."""
+    stock's bar for a minute has the same time (fork PR #43)."""
     ts = pd.Timestamp(timestamp)
     if ts.tzinfo is None:
         ts = ts.tz_localize("UTC")

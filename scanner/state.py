@@ -243,7 +243,7 @@ class SymbolState:
         # from. M5 RRS reads completed 5-min bars only, so until one of them changes
         # a recompute gives the same numbers. Rebuilding it in pandas on every 1-min
         # bar cost ~4 ms a bar and made a restart late in the day take 12-16 minutes
-        # (fork PR "Restart in about a minute").
+        # (fork PR #43).
         self._rrs_inputs: tuple = (None, None)
         # Startup seeding (begin_seed / end_seed): the RRS is computed once at the end.
         self._seeding: bool = False
