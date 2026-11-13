@@ -17,26 +17,41 @@ what they mean, come from the module.
 - open_vs_pm_range: the minute's open against levels.pm_high and levels.pm_low: "above",
   "below" or "inside" (the edges count as inside).
 
-During the minute (09:30:00 to 09:31:00 ET, today only) the values are the minute so far,
-from Alpaca's snapshot of the day's tickers, asked at most every LIVE_SECONDS while the
-window asks: its day bar counts only regular-hours trades (Alpaca's market data FAQ, "How
-are bars aggregated": a Form T trade updates a day bar's volume only), so before 09:31 its
-open, high and low are the first minute's. A snapshot whose latest trade is from 09:31 on
-is not used, since its day bar has later trades in it. This is REST polling, never a
-websocket (ALPACA_STREAM=0, fork PR #3). The row says the time of those values
-(`first_minute_as_of`), and the cell's note says they are so far.
+From 09:30:00 ET, today only, the route asks Alpaca for a snapshot of the day's tickers, at
+most every LIVE_SECONDS while the window asks. This is REST polling, never a websocket
+(ALPACA_STREAM=0, fork PR #3). A snapshot fills the cells two ways (`so_far`):
 
-FirstMinuteBars then keeps the 09:30 bar per day (the newest KEEP_DAYS days), which
-replaces the values so far. For a day it asks Alpaca once, for every ranked ticker with a
-live column, from DUE_ET (09:31:03, three seconds after the minute closes, like the
-scanner's own poller, scanner/data/alpaca_poll.py SETTLE_SECONDS). A ticker with no bar yet
-is asked again every FAST_RETRY_SECONDS until FAST_UNTIL_ET, then at most every
-RETRY_SECONDS until 09:35 ET (GIVE_UP_ET); after that, and at once for a past day, it has
-no 09:30 trade and its cells say so. A failed request is asked again the same way. A day
-without a live column and a preview (before 09:25 ET) make no request.
+- Its minute bar, once that is the 09:30 bar: the whole minute, as of its end (09:31:00).
+  The first measured open (2026-11-13, the opening recorder's file, scanner/open_recorder.py)
+  had it at 09:31:00.08 to 00.65 ET, while the bars request below had it only at 09:31:01.4
+  to 06.5, so this fills the cells 2 to 5 seconds sooner (Ash's go, project chat,
+  2026-11-13 15:38:32 UTC). Its high and low were the bars request's on that day.
+- Its day bar, while the minute forms: the minute so far, as of the latest trade. Alpaca's
+  day bar counts only regular-hours trades (its market data FAQ, "How are bars aggregated"),
+  so before 09:31 its open, high and low would be the first minute's. On 2026-11-13 this
+  showed nothing: the day bar stayed the prior day's until 09:31:00.65 ET for every symbol,
+  and by then the latest trade was from 09:31. It stays because it costs no request and is
+  checked against the day.
+
+Both are marked not confirmed: the row says the time the values run to
+(`first_minute_as_of`; Edge Trader reads it as "not final", so its order buttons wait for
+the bar), and the cell's note says where they come from. The snapshot is asked on after
+09:31:00 at the same pace, but only for the tickers still without their bar, and never
+from GIVE_UP_ET. Not confirmed: whether the snapshot's minute bar can change after it first
+shows the 09:30 bar, and whether other days look like 2026-11-13 (one day's file).
+
+FirstMinuteBars keeps the 09:30 bar per day (the newest KEEP_DAYS days), which replaces
+the snapshot's values and removes the mark; when the two differ by more than a cent it logs
+a warning with both. For a day it asks Alpaca once, for every ranked ticker with a live
+column, from DUE_ET (09:31:03, three seconds after the minute closes, like the scanner's
+own poller, scanner/data/alpaca_poll.py SETTLE_SECONDS). A ticker with no bar yet is asked
+again every FAST_RETRY_SECONDS until FAST_UNTIL_ET, then at most every RETRY_SECONDS until
+09:35 ET (GIVE_UP_ET); after that, and at once for a past day, it has no 09:30 trade and
+its cells say so. A failed request is asked again the same way. A day without a live
+column, a past day and a preview (before 09:25 ET) never ask for a snapshot.
 
 The bars are unadjusted (Alpaca's raw prices): the row's levels are that day's prices, so a
-later split must not change the bar. The route adds the bar (or the minute so far) to each
+later split must not change the bar. The route adds the bar (or the snapshot's values) to each
 row with a live column as `first_minute` (open, high, low, close, or null) for the details
 card's level ladder, and asks the window to refresh every REFRESH_SECONDS while today's
 cells are not final (`refresh_seconds`).
@@ -75,8 +90,10 @@ REFRESH_SECONDS = 2
 REFRESH_FROM_ET = time(9, 29, 45)
 
 FIRST_MINUTE = "first_minute"   # the row field the route adds: the 09:30 bar, or null
-AS_OF = "first_minute_as_of"    # added while the values are the minute so far: "HH:MM:SS" ET
+AS_OF = "first_minute_as_of"    # added while the values are the snapshot's, not confirmed: "HH:MM:SS" ET
 BAR_FIELDS = ("open", "high", "low", "close")
+# The snapshot's 09:30 bar against the bar: a larger difference in a price is logged (brief 20).
+CENT = 0.01
 
 # Kept in step with ov_picks/contract.py (LIVE_FIRST_MINUTE_RANGE_ATR, LIVE_OPEN_VS_PM_RANGE,
 # OPEN_*). Spelled here too so the scanner starts without the ov_picks folder.
@@ -88,13 +105,16 @@ ABOVE, BELOW, INSIDE = "above", "below", "inside"
 # (day, tickers) -> {ticker: {open, high, low, close}} for the 09:30 ET bar; a ticker
 # without one is left out. Raises when the request fails.
 Fetch = Callable[[date, list[str]], Mapping[str, Mapping[str, float]]]
-# (day, tickers) -> {ticker: {open, high, low, close, as_of}} for the 09:30 ET minute so far,
-# as_of the aware time of the last trade in it; a ticker without one is left out. Raises
+# (day, tickers) -> {ticker: {open, high, low, close, as_of}} for the 09:30 ET minute from
+# the snapshot, not confirmed: as_of is the aware time the values run to, the minute's end
+# for the whole 09:30 bar, else the last trade's. A ticker without one is left out. Raises
 # when the request fails.
 Forming = Callable[[date, list[str]], Mapping[str, Mapping[str, Any]]]
 
-NOTE_WAITING = "Fills from 09:30 ET: live during the first minute, then from its bar at 09:31."
-NOTE_NO_TRADE_YET = "No trade since 09:30 ET yet. Edge Scanner looks again every few seconds."
+NOTE_WAITING = ("Fills just after 09:31 ET: first from Alpaca's snapshot of the 09:30 bar, then "
+                "confirmed by the 09:30 bar request within seconds.")
+NOTE_NOT_IN_SNAPSHOT_YET = ("Alpaca's snapshot does not show this name's 09:30 minute yet. Edge "
+                            "Scanner asks again every few seconds.")
 NOTE_NO_FEED = ("This scanner has no Alpaca market data feed, so this column stays blank. "
                 "Run the scanner with Alpaca to fill it.")
 NOTE_LOADING = "Fetching the 09:30 ET bars. They show on the next refresh."
@@ -114,7 +134,13 @@ def note_unknown_kind(kind: Any) -> str:
 
 
 def note_so_far(as_of: str, band_note: Optional[str]) -> str:
-    lead = f"So far, to {as_of} ET. The 09:30 bar replaces it just after 09:31."
+    lead = f"So far, to {as_of} ET. From Alpaca's snapshot; the 09:30 bar replaces it just after 09:31."
+    return f"{lead} {band_note}" if band_note else lead
+
+
+def note_unconfirmed(band_note: Optional[str]) -> str:
+    lead = ("The 09:30 bar as Alpaca's snapshot shows it, not confirmed yet. The 09:30 bar request "
+            "confirms it within seconds.")
     return f"{lead} {band_note}" if band_note else lead
 
 
@@ -127,9 +153,9 @@ class Lookup:
     waiting: bool = False                          # before the bar is asked for (DUE_ET)
     no_feed: bool = False
     busy: bool = False                             # a request for the day is out
-    # the minute so far, for tickers without their bar: {ticker: {open, high, low, close, as_of}}
+    # the snapshot's values, for tickers without their bar: {ticker: {open, high, low, close, as_of}}
     forming: dict[str, dict[str, Any]] = field(default_factory=dict)
-    live: bool = False                             # the minute so far is being asked for
+    live: bool = False                             # the snapshot is being asked for
 
 
 @dataclass
@@ -147,10 +173,10 @@ def _at(day: date, when: time) -> datetime:
 
 
 class FirstMinuteBars:
-    """The 09:30 ET minute of the days shown: live while it forms, then its bar, kept.
+    """The 09:30 ET minute of the days shown: from the snapshot first, then its bar, kept.
 
     `fetch` asks for the bars (alpaca_fetch, or a fake in tests and the demo); None when the
-    scanner has no Alpaca feed. `forming` asks for the minute so far (alpaca_forming); None
+    scanner has no Alpaca feed. `forming` asks for the snapshot's values (alpaca_forming); None
     leaves the cells blank until the bar. `clock` is a monotonic clock for the spacing.
     Safe to call from the route's worker threads: one request of each kind per day is out
     at a time, and a caller never waits for another's request.
@@ -173,22 +199,36 @@ class FirstMinuteBars:
             return Lookup(waiting=True, no_feed=no_feed)
         wanted = sorted(set(tickers))
         if now_et < _at(day, DUE_ET):
-            if now_et < _at(day, END_ET):
-                self._ask_forming(day, wanted)
+            # From 09:31:00 the snapshot's minute bar is the 09:30 bar (brief 20, 2026-11-13).
+            self._ask_forming(day, wanted)
             with self._lock:
                 entry = self._days.get(day) or _Day()
                 return Lookup(waiting=True, no_feed=no_feed, forming=_copy(entry.forming),
                               live=self._forming is not None)
         if self._fetch is None:
             return Lookup(no_feed=True)
+        self._ask_bars(day, wanted, now_et)
+        # Until its bar is in, the snapshot keeps a ticker's cells filled sooner (brief 20):
+        # only for the tickers still missing one, and never from 09:35 (nor for a past day).
+        if now_et < _at(day, GIVE_UP_ET):
+            with self._lock:
+                entry = self._days.get(day) or _Day()
+                unconfirmed = [t for t in wanted if t not in entry.bars and t not in entry.gone]
+            self._ask_forming(day, unconfirmed)
+        with self._lock:
+            return self._lookup(self._days.get(day) or _Day(), busy=day in self._busy)
+
+    def _ask_bars(self, day: date, wanted: list[str], now_et: datetime) -> None:
+        """Ask for the 09:30 bars of the tickers without one, unless a request for the day is
+        out or the last one was too recent."""
         with self._lock:
             entry = self._days.get(day) or _Day()
             missing = [t for t in wanted if t not in entry.bars and t not in entry.gone]
             if not missing or day in self._busy:
-                return self._lookup(entry, busy=day in self._busy)
+                return
             spacing = FAST_RETRY_SECONDS if now_et < _at(day, FAST_UNTIL_ET) else RETRY_SECONDS
             if entry.tried_at is not None and self._clock() - entry.tried_at < spacing:
-                return self._lookup(entry)
+                return
             entry.tried_at = self._clock()
             self._busy.add(day)
             self._days[day] = entry
@@ -214,10 +254,9 @@ class FirstMinuteBars:
             self._days[day] = entry
             for old in sorted(self._days)[:-KEEP_DAYS]:
                 del self._days[old]
-            return self._lookup(entry)
 
     def _ask_forming(self, day: date, wanted: list[str]) -> None:
-        """Ask for the minute so far, unless it was asked within LIVE_SECONDS or is out."""
+        """Ask the snapshot for `wanted`, unless it was asked within LIVE_SECONDS or is out."""
         if self._forming is None or not wanted:
             return
         with self._lock:
@@ -258,13 +297,30 @@ def _copy(forming: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]
 
 
 def _log_against_so_far(ticker: str, bar: Mapping[str, float], so_far: Optional[Mapping[str, Any]]) -> None:
-    """Log the last values so far against the bar, to check the snapshot source on real
-    mornings (Ash's request, 2026-11-08): they should match, apart from trades in the last
-    seconds of the minute."""
-    if so_far:
-        log.info("ov_picks_live: %s 09:30 bar o/h/l %.4f/%.4f/%.4f; so far to %s: %.4f/%.4f/%.4f",
-                 ticker, bar["open"], bar["high"], bar["low"], so_far["as_of"].strftime("%H:%M:%S"),
-                 so_far["open"], so_far["high"], so_far["low"])
+    """Log the snapshot's last values against the bar, to check the snapshot on real mornings
+    (Ash's request, 2026-11-08).
+
+    The snapshot's 09:30 bar should be the bar: a difference of more than a cent in open,
+    high, low or close is a WARNING with both (brief 20; the server keeps WARNING and up, so
+    this is the line a morning leaves). The day bar's minute so far misses the minute's last
+    seconds, so it only gets an INFO line."""
+    if not so_far:
+        return
+    if _whole_minute(so_far["as_of"]):
+        if any(round(abs(bar[k] - so_far[k]), 6) > CENT for k in BAR_FIELDS):
+            log.warning("ov_picks_live: %s 09:30 bar o/h/l/c %.4f/%.4f/%.4f/%.4f differs by more than a cent "
+                        "from the snapshot's 09:30 bar %.4f/%.4f/%.4f/%.4f; the bar wins",
+                        ticker, *(bar[k] for k in BAR_FIELDS), *(so_far[k] for k in BAR_FIELDS))
+        return
+    log.info("ov_picks_live: %s 09:30 bar o/h/l %.4f/%.4f/%.4f; so far to %s: %.4f/%.4f/%.4f",
+             ticker, bar["open"], bar["high"], bar["low"], so_far["as_of"].strftime("%H:%M:%S"),
+             so_far["open"], so_far["high"], so_far["low"])
+
+
+def _whole_minute(as_of: datetime) -> bool:
+    """Whether snapshot values run to the minute's end, so they are the whole 09:30 bar from
+    the snapshot's minute bar (`so_far`). The minute so far always runs to a trade before it."""
+    return as_of.astimezone(_ET).time() == END_ET
 
 
 def _bar(raw: Any) -> Optional[dict[str, float]]:
@@ -295,7 +351,7 @@ def alpaca_fetch(feed: Any) -> Optional[Fetch]:
 
 
 def alpaca_forming(feed: Any) -> Optional[Forming]:
-    """The minute-so-far request on the scanner's Alpaca feed, or None without one.
+    """The snapshot request on the scanner's Alpaca feed, or None without one.
 
     One snapshot request (REST, GET /v2/stocks/snapshots) for the day's tickers, on the
     configured feed, through the feed's own data client. Never a websocket."""
@@ -306,24 +362,38 @@ def alpaca_forming(feed: Any) -> Optional[Forming]:
     def forming(day: date, tickers: list[str]) -> dict[str, dict[str, Any]]:
         from alpaca.data.requests import StockSnapshotRequest
         from scanner.data.alpaca import market_data_feed
-        snaps = client.get_stock_snapshot(StockSnapshotRequest(symbol_or_symbols=tickers, feed=market_data_feed()))
+        from scanner import netlog  # fork: the call's time and data age (scanner/netlog.py, brief 11)
+        with netlog.call("alpaca_data", "snapshots", "ov_picks_live", symbols_n=len(tickers)) as c:
+            snaps = client.get_stock_snapshot(StockSnapshotRequest(symbol_or_symbols=tickers, feed=market_data_feed()))
+            if c:
+                c.seen(items=len(snaps), data_ts=netlog.newest_trade(snaps))
         return so_far(snaps, day)
 
     return forming
 
 
 def so_far(snapshots: Any, day: date) -> dict[str, dict[str, Any]]:
-    """{ticker: {open, high, low, close, as_of}} for the 09:30 ET minute so far, from
-    Alpaca snapshots ({symbol: Snapshot}).
+    """{ticker: {open, high, low, close, as_of}} for `day`'s 09:30 ET minute from Alpaca
+    snapshots ({symbol: Snapshot}), not confirmed. A snapshot without either is left out.
 
-    A snapshot counts only when its day bar is `day`'s and its latest trade is inside the
-    minute: before the first regular trade the day bar is the prior day's, and from 09:31 on
-    it holds later trades too."""
+    - The whole minute, as of its end (09:31:00): the snapshot's minute bar, when it is
+      stamped 09:30:00 ET of `day`. Seen from 09:31:00.08 to 00.65 ET on 2026-11-13 (brief 20).
+    - Else the minute so far, as of the latest trade: the day bar, when it is `day`'s and the
+      latest trade is inside the minute. Before the first regular trade the day bar is the
+      prior day's, and from 09:31 on it holds later trades too. On 2026-11-13 the day bar
+      stayed the prior day's until 09:31:00.65 ET, so this showed nothing that day.
+    """
     out: dict[str, dict[str, Any]] = {}
     if not isinstance(snapshots, Mapping):
         return out
     start, end = _at(day, BAR_ET), _at(day, END_ET)
     for symbol, snap in snapshots.items():
+        minute = getattr(snap, "minute_bar", None)
+        if _et_time(getattr(minute, "timestamp", None)) == start:
+            bar = _bar({k: getattr(minute, k, None) for k in BAR_FIELDS})
+            if bar is not None:
+                out[str(symbol)] = {**bar, "as_of": end}
+                continue
         daily, trade = getattr(snap, "daily_bar", None), getattr(snap, "latest_trade", None)
         bar_time, last = _et_time(getattr(daily, "timestamp", None)), _et_time(getattr(trade, "timestamp", None))
         if bar_time is None or last is None or not _bar_of(bar_time, day) or not start <= last < end:
@@ -379,10 +449,10 @@ def _kind(metric: Mapping) -> Any:
 def fill(rows: list[dict], lookup: Optional[Lookup]) -> None:
     """Fill each row's live columns in place, and add its 09:30 bar as `first_minute`.
 
-    Without the bar yet, the minute so far fills them, and the row says until when
-    (`first_minute_as_of`). A row without a live column is left as read, so a module file
-    without them is served unchanged. `lookup` is None for rows that never fill (a preview,
-    before the freeze).
+    Without the bar yet, the snapshot's values fill them, and the row says the time they run
+    to (`first_minute_as_of`: "09:31:00" for the snapshot's 09:30 bar), which marks them not
+    confirmed. A row without a live column is left as read, so a module file without them is
+    served unchanged. `lookup` is None for rows that never fill (a preview, before the freeze).
     """
     for row in rows:
         live = [m for m in row.get("metrics") or [] if isinstance(m.get("live"), Mapping)]
@@ -390,10 +460,12 @@ def fill(rows: list[dict], lookup: Optional[Lookup]) -> None:
             continue
         bar = lookup.bars.get(row["ticker"]) if lookup else None
         as_of = None
+        whole = False
         if bar is None and lookup is not None and row["ticker"] in lookup.forming:
             forming = lookup.forming[row["ticker"]]
             bar = {k: forming[k] for k in BAR_FIELDS}
             as_of = forming["as_of"].astimezone(_ET).strftime("%H:%M:%S")
+            whole = _whole_minute(forming["as_of"])
             row[AS_OF] = as_of
         row[FIRST_MINUTE] = dict(bar) if bar else None
         for metric in live:
@@ -404,12 +476,15 @@ def fill(rows: list[dict], lookup: Optional[Lookup]) -> None:
                 continue
             tone, band_note = band(metric["live"].get("bands") or [], value)
             metric["value"], metric["tone"] = value, tone
-            metric["note"] = note_so_far(as_of, band_note) if as_of else band_note
+            if as_of is None:
+                metric["note"] = band_note
+            else:
+                metric["note"] = note_unconfirmed(band_note) if whole else note_so_far(as_of, band_note)
 
 
 def _blank_note(ticker: str, lookup: Optional[Lookup]) -> str:
     if lookup is not None and lookup.waiting and lookup.live:
-        return NOTE_NO_TRADE_YET          # inside the minute: the snapshot has no trade yet
+        return NOTE_NOT_IN_SNAPSHOT_YET   # before the bar is due: the snapshot shows no 09:30 minute yet
     if lookup is None or lookup.waiting:
         return NOTE_WAITING
     if lookup.no_feed:

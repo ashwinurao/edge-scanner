@@ -6,6 +6,7 @@ import { DASH } from '../../lib/format'
 import type { OvEntry, OvPick } from './types'
 import { fmtCell, fmtPrice, groupDetails, ladder, liveDetail, toneClass, type Ladder } from './card'
 import { fmtValue } from './view'
+import { snapshotBar } from './live'
 
 // Details show each value as the module wrote it: whole numbers get thousands separators,
 // other numbers keep every digit.
@@ -80,7 +81,8 @@ export function TradeCard({ p }: { p: OvPick }) {
             <LevelLadder lad={lad} ticker={p.ticker} />
             <p className="faint ovp-box-note">
               Orange: the pre-market range. Grey: the prior day's range.{p.first_minute
-                ? (p.first_minute_as_of ? ` Blue: the first minute so far, to ${p.first_minute_as_of} ET.` : ' Blue: the first minute.')
+                ? (snapshotBar(p) ? ' Blue: the first minute as Alpaca\'s snapshot shows it, not confirmed yet.'
+                  : p.first_minute_as_of ? ` Blue: the first minute so far, to ${p.first_minute_as_of} ET.` : ' Blue: the first minute.')
                 : ' The first minute shows from 09:30 ET.'}
             </p>
           </section>
