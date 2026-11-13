@@ -77,7 +77,7 @@ function ToneKey({ picks }: { picks: OvPick[] }) {
   if (!tones.size && !parts && !live) return null
   return (
     <div className="ovp-key faint">
-      {live && <span><i className="ovp-dot" />first minute so far, every 2 s; final from its bar just after 09:31</span>}
+      {live && <span><i className="ovp-dot" />not confirmed yet: from Alpaca's snapshot; final from the 09:30 bar request within seconds</span>}
       {parts && (
         <>
           <span><i className="ovp-rb ovp-rb-first">1</i>OV's first pick</span>
@@ -140,7 +140,7 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
         <tr>
           <th className="ovp-tk">Ticker</th>
           {labels.map((l, i) => (
-            <th key={l} className={numeric[i] ? 'num' : ''} title={kinds[i] ? 'Live from 09:30 ET: the first minute so far, every 2 s, then its bar just after 09:31 ET' : undefined}>
+            <th key={l} className={numeric[i] ? 'num' : ''} title={kinds[i] ? 'Fills just after 09:31 ET: first from Alpaca\'s snapshot of the 09:30 bar (dot: not confirmed yet), then from the 09:30 bar request within seconds' : undefined}>
               {l}{kinds[i] && <span className="ovp-when">live 09:30</span>}
             </th>
           ))}
@@ -176,10 +176,10 @@ function RankedTable({ win, labels, picks, inUniverse, openTicker, toggle, selTi
                 </td>
                 {labels.map((l, j) => {
                   const m = metricOf(p, l)
-                  // The minute so far (Ash, 2026-11-08): a dot until the 09:30 bar replaces it.
+                  // From the snapshot, not confirmed (Ash, 2026-11-08; brief 20): a dot until the 09:30 bar replaces it.
                   const sofar = soFar(p, !!kinds[j]) !== null && m?.value !== null && m?.value !== undefined
                   const cls = [numeric[j] ? 'num mono' : '', toneClass(m?.tone), kinds[j] && (m?.value === null || m?.value === undefined) ? 'ovp-wait' : ''].filter(Boolean).join(' ')
-                  return <td key={l} className={cls} title={m?.note || undefined}>{sofar && <i className="ovp-dot" aria-label="so far" />}{fmtCell(m, whole[j], small[j])}</td>
+                  return <td key={l} className={cls} title={m?.note || undefined}>{sofar && <i className="ovp-dot" aria-label="not confirmed yet" />}{fmtCell(m, whole[j], small[j])}</td>
                 })}
                 {parts.map((l, k) => {
                   const part = p.score_parts?.find(x => x.label === l)

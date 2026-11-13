@@ -40,8 +40,8 @@ by name, and settings can only be changed from a page this machine served, so a 
 cannot reach the scanner through your browser.
 
 - **Stays on your machine:** your API keys in `.env`, the setups, universe filters, watchlists and
-  screens you build, the bar caches, and the alert archives. All of it under `data/`, which is
-  gitignored.
+  screens you build, the bar caches, the alert archives, and the record of outside calls and
+  warnings (`data/netlog/`, `data/logs/`). All of it under `data/`, which is gitignored.
 - **Goes out, to your own accounts:** market data requests to Alpaca or Charles Schwab, signed with
   your keys. They see the symbols you scan, as any market-data client would.
 - **Goes out, unauthenticated:** company fundamentals from Yahoo Finance, and per-symbol news
@@ -244,6 +244,32 @@ bars, 1,000 symbols per request. These are Alpaca's own bars, handed on 3 second
 closes, so alerts come a few seconds later than on the stream. The code is in
 `scanner/data/alpaca_poll.py`.
 
+**A record of every outside call (fork).** The scanner writes one JSON line per outside call to
+`data/netlog/YYYY-MM-DD.jsonl` (UTC date), so a slow or failed call, late bars or a shared rate
+limit can be explained afterwards. It is a record only: nothing reads it back, nothing waits for it,
+and a failure to write it never reaches the scanner. `EDGE_SCANNER_NETLOG=0` in `.env` turns it off,
+together with the log file below. The code is in `scanner/netlog.py`. Files are kept; expect about
+15 MB a day, most of it the 5-second bar poll, which runs around the clock. Every line has `ts` (UTC), `kind` and
+`app` (`edge-scanner`); Edge Trader writes the same format.
+
+| kind | one line per |
+|---|---|
+| `answer` | HTTP answer from Alpaca, Alpaca news, Yahoo or Nasdaq RSS, Nasdaq Trader: `vendor`, `path` (no query), `http`, `wire_ms` (send until headers), `bytes`, the vendor's `date`, `retry_after`, and Alpaca's rate-limit headers as `rl_limit`, `rl_remaining`, `rl_reset`. alpaca-py retries a 429 or 504 inside one call; each attempt is its own line. |
+| `call` | logical call, written when it ends: `vendor`, `endpoint`, `purpose` (`poller`, `ov_picks_live`, `chart`, `today`, `history`, `warmup`, `news`, ...), `wait_ms` + `wire_ms` + `between_ms` (retry sleeps, pages) + `after_ms` (body, parsing, DataFrame) = `total_ms`, `attempts`, `http`, `ok`, `error` (`timeout_connect`, `timeout_read`, `tls`, `dns`, `refused`, `reset`, `http_429`, `http_4xx`, `http_5xx`, `other`), `items`, `data_ts` (newest vendor time in the answer) and `data_age_ms`. The bar poll writes one per pass, with `pass_ms`, `handed` and `overrun` (the pass took longer than 5 s). yfinance and the GitHub check do not use a hooked session, so their `attempts` and `wire_ms` are null. |
+| `inflight` | call still open after 2, 5, 10, 30 and 60 s. alpaca-py sets no request timeout, so this is how a hung call shows. |
+| `bars` | minute bar, written once the poll stops asking for that minute: `expected` symbols, `with_bar`, `first_seen_ms_after_close` and `handed_ms_after_close` (min, p50, p95, max over the symbols with a bar), `seen_before_close` (symbols whose bar first came before the minute ended), and `changed_after_handed` with `max_volume_change_pct` (symbols whose volume or close changed in a later answer after the bar was handed on, and the largest volume change in % of the handed volume, signed). The poll does this work after it hands the bars on. |
+| `route` | request to `/api/v2/ov-picks*`, `/api/v2/clock` or `/api/bars/...`: `route`, `http`, `ms`, `from` and `req` (Edge Trader's `X-Edge-App` and `X-Edge-Req` headers). Requests the local-only guard refuses are timed too; they have no route pattern, so `route` is their path, cut at 200 characters. |
+| `lag` | minute: how late a 100 ms heartbeat thread and the web server's event loop wake, threads, CPU seconds, memory, queue, `dropped` lines, calls in flight, live-feed clients. |
+| `note` | start (version, commit when known), the bar poll's start. |
+
+No line holds API keys, request or answer bodies, query strings or `.env` values; error texts have
+URLs cut at the query and the Alpaca keys replaced. `GET /api/v2/diag/net` (read only) sums up the
+calls in memory: per vendor, endpoint and purpose, for the last 5 minutes and since 09:25 ET today,
+the count, errors by class, p50, p95 and max of `wire_ms` and `total_ms`, and the age of the last
+good call; also the lowest `rl_remaining` seen, the calls in flight, the last `lag` and `bars` lines
+and `dropped`. WARNING and worse log lines also go to `data/logs/edge-scanner-YYYY-MM-DD.log` (UTC
+date), so they survive a rebuild of the container.
+
 **SPY RV20 in the top bar (fork).** The top bar shows SPY's 20-day realized volatility next to the
 market regime: red at 10.5 or lower (a calm SPY day), green above. It comes from the SPY daily
 history the scanner already loads, so it adds no network call. See
@@ -304,13 +330,18 @@ scanner shows the day's picks. It never writes that folder.
   what each value means.
 - **Columns that fill from the open.** A column the module marks `live` is filled by the
   scanner from the day's 09:30 ET minute: the first minute's range in ATR, and where the open
-  sits against the pre-market range. During the minute they show the minute so far and update
-  every 2 seconds, so OR1 or OR2 can be chosen right after 09:31 (the owner's request,
-  2026-11-08): while the window is open, the route asks Alpaca for a snapshot of the day's
-  ranked tickers at most every 2 seconds, and the window refreshes every 2 seconds. The
-  snapshot's day bar counts only regular-hours trades, so before 09:31 it is the first minute.
-  From 09:31:03 ET the minute's bar replaces it: the route asks Alpaca once per day shown, for
-  that day's ranked tickers, and keeps the answer (the owner's go, 2026-11-07). Both are REST
+  sits against the pre-market range, so OR1 or OR2 can be chosen right after 09:31 (the
+  owner's request, 2026-11-08). From 09:30 ET, while the window is open, the route asks Alpaca
+  for a snapshot of the day's ranked tickers at most every 2 seconds, and the window refreshes
+  every 2 seconds. Just after 09:31 the snapshot's minute bar is the finished 09:30 bar: the
+  cells fill from it at once, marked not confirmed (the owner's go, 2026-11-13). On the first
+  measured open (2026-11-13) the snapshot had that bar at 09:31:00.1 to 00.7 ET and the bars
+  request only at 09:31:01.4 to 06.5, so this is 2 to 5 seconds sooner. The snapshot's day bar
+  can also fill them with the minute so far, but on 2026-11-13 it stayed the prior day's until
+  just after 09:31, so it showed nothing. From 09:31:03 ET the 09:30 bar replaces the
+  snapshot's values and the mark goes: the route asks Alpaca once per day shown, for that day's
+  ranked tickers, and keeps the answer (the owner's go, 2026-11-07). Until a ticker has its
+  bar, the snapshot is asked for it at the same pace, never after 09:35 ET. Both are REST
   requests through the scanner's own data client, never a websocket
   (`scanner/ov_picks_live.py`). Before 09:30 ET, without an Alpaca feed, or when a request
   fails, the cells stay blank and say why. Past days fill from that day's bar.

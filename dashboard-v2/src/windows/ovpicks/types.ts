@@ -58,7 +58,7 @@ export interface OvLevels {
   last?: number
 }
 
-/** The 09:30 ET minute bar, or the minute so far, added by the scanner to rows with a live column. */
+/** The 09:30 ET minute bar, or the snapshot's values, added by the scanner to rows with a live column. */
 export interface OvBar {
   open: number
   high: number
@@ -110,11 +110,12 @@ export interface OvPick {
   name?: string
   /** the row's price levels, for the details card's ladder */
   levels?: OvLevels
-  /** the 09:30 ET bar, or the minute so far while it forms: null until there is a trade;
-   *  absent on rows without a live column */
+  /** the 09:30 ET bar, or Alpaca's snapshot of it until the bar is in: null until there is
+   *  one; absent on rows without a live column */
   first_minute?: OvBar | null
-  /** while the minute forms: the ET time ("09:30:41") the live cells run to; absent once
-   *  they come from the 09:30 bar (scanner/ov_picks_live.py) */
+  /** while the values come from the snapshot, not confirmed: the ET time they run to,
+   *  "09:31:00" for the snapshot's 09:30 bar or a trade's time ("09:30:41") for the minute
+   *  so far; absent once they come from the 09:30 bar (scanner/ov_picks_live.py) */
   first_minute_as_of?: string
   /** what made up the score, when the module sends it */
   score_parts?: OvPart[]
