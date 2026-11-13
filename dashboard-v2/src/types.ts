@@ -249,8 +249,13 @@ export interface ClockInfo {
   /** which provider, and whether bars are still arriving (older scanners omit it) */
   data?: { provider: string | null; last_bar_et: string | null; last_bar_age_s: number | null } | null
   /** SPY RV20 through the last completed session, for the top bar (fork, scanner/spy_rv.py) */
-  spy_rv?: { rv20: number; through: string | null; calm: boolean; calm_max: number } | null
+  spy_rv?: SpyRvReading | null
 }
+
+/** fork, scanner/spy_rv.py */
+export interface SpyRvReading { rv20: number; through: string | null; calm: boolean; calm_max: number }
+export interface SpyRvPoint { date: string; rv20: number; calm: boolean }
+export interface SpyRvPayload { current: SpyRvReading | null; calm_max: number; history: SpyRvPoint[] }
 
 export interface ToplistRow {
   symbol: string; price: number | null; value: number | null

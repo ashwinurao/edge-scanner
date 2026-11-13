@@ -13,6 +13,7 @@ Bar routing inside _on_bar():
 """
 from __future__ import annotations
 
+import functools
 import logging
 import time
 from typing import Optional
@@ -31,6 +32,17 @@ from scanner.timing import bar_timer, perf_counter_ns
 from scanner.trigger_catalog import SymbolSeries
 
 log = logging.getLogger(__name__)
+
+
+@functools.lru_cache(maxsize=4096)
+def _et_minute_and_day(timestamp) -> tuple[int, str]:
+    """(minutes since midnight ET, ET date) for a bar time. Cached because every
+    stock's bar for a minute has the same time (fork PR #43)."""
+    ts = pd.Timestamp(timestamp)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    et = ts.tz_convert("America/New_York")
+    return et.hour * 60 + et.minute, et.strftime("%Y-%m-%d")
 
 
 class LiveScanner:
@@ -70,6 +82,7 @@ class LiveScanner:
         self._latest_spy_bar: Optional[dict] = None
         self._regime: MarketRegime = MarketRegime.NEUTRAL
         self._spy_rv: Optional[dict] = None    # top bar SPY RV20, fork (scanner/spy_rv.py)
+        self._spy_rv_history: list[dict] = []
         # Data freshness for the dashboard: the newest bar's own time, and the
         # wall clock when a bar last arrived. A connected socket says nothing
         # about whether bars are still flowing; these do.
@@ -156,6 +169,7 @@ class LiveScanner:
         # SPY gets its own SymbolState for intraday VWAP / regime tracking
         self._spy_state = SymbolState.from_history("SPY", spy_daily, spy_daily)
         self._spy_rv = spy_rv.from_daily(spy_daily)
+        self._spy_rv_history = spy_rv.history(spy_daily)
         log.debug("SPY state built")
 
         built = 0
@@ -339,13 +353,10 @@ class LiveScanner:
 
     def _advance_series(self, state: SymbolState, bar: dict) -> str:
         """Push one bar into the symbol's candle rings. Returns the session tag."""
-        ts = pd.Timestamp(bar["timestamp"])
-        if ts.tzinfo is None:
-            ts = ts.tz_localize("UTC")
-        et = ts.tz_convert("America/New_York")
+        et_min, day = _et_minute_and_day(bar["timestamp"])
         vwap = state.vwap
         return self.series(state.symbol).on_bar(
-            bar, et.hour * 60 + et.minute, et.strftime("%Y-%m-%d"),
+            bar, et_min, day,
             float(vwap) if vwap is not None else None,
         )
 

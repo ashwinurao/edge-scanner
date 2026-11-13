@@ -243,9 +243,10 @@ const PAST_CLICK = 'A click on a row shows that day in the linked charts and new
 /** Where a history file's list comes from (ov_picks/CONTRACT.md, "History file"). */
 const HISTORY_SOURCE: Record<string, { text: string; title: string; note: string }> = {
   ov_rebuild: {
-    text: 'OV 2026 rebuild',
-    title: 'OV\'s current code and settings, run again on clean bars for this day. It can differ from what OV showed live that morning.',
-    note: 'OV\'s 2026 rebuild: OV\'s current code and settings, run again on clean bars for this day, before this module ran. It can differ from what OV showed live that morning.',
+    // Not just 2026 since the 2020-2025 rebuild (Ash, project thread, 2026-11-11 00:34 UTC).
+    text: 'OV rebuild',
+    title: 'OV\'s current code and settings, run again on clean bars for this day. It can differ from what OV showed live that morning, or from OV\'s stored backtest.',
+    note: 'OV rebuild: OV\'s current code and settings, run again on clean bars for this day, before this module ran. It can differ from what OV showed live that morning, or from OV\'s stored backtest.',
   },
   ov_live: {
     text: 'OV live scan',

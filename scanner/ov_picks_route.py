@@ -33,7 +33,7 @@ The answer always has every key in ROUTE_FIELDS:
 - day: contract.read_day's view of trading_date, unchanged. Null on a route problem.
 - history: for an asked past day without the module's own picks, contract.read_history's
   view of it, unchanged: OV's own ranked list for a day before the module ran, from OV's
-  2026 rebuild or OV's live scan (its source says which; ov_picks/CONTRACT.md, "History
+  rebuild (2020-2026) or OV's live scan (its source says which; ov_picks/CONTRACT.md, "History
   file"). Null otherwise, and with a reader that predates history files. The module's
   frozen picks always win: a day with them never shows history.
 - status: contract.read_status's view, unchanged. Null on a route problem.

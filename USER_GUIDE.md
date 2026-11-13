@@ -190,7 +190,11 @@ of daily history; extra flags are passed through, for example `./start_scanner.s
 2. **Sector map**: maps symbols to their sector ETFs (refreshed weekly).
 3. **Daily history**: refreshes the daily bar cache.
 4. **Intraday history**: refreshes the 5-minute bar cache used for relative volume.
-5. **Warmup**: seeds every symbol's state from that history.
+5. **Warmup**: seeds every symbol's state from that history. A start after 04:00 ET also replays
+   today's 1-minute bars so far into every symbol (VWAP, high and low, 5-minute bars, relative
+   strength vs SPY). No setup sees the replayed bars, so nothing from before the start alerts. The
+   replay takes seconds even late in the day: the 5-minute relative strength is worked out once per
+   symbol at its end, not on every replayed bar (`scanner/startup_seed.py`).
 6. **Live stream**: opens **one** Alpaca market-data WebSocket and starts scanning 1-minute bars.
 
 When it is live, open **http://localhost:7777** in a browser (it redirects to the dashboard at `/v2/`).
@@ -282,7 +286,9 @@ or `NEWS_RSS_SOURCES=` (empty) for Alpaca only.
   realized-volatility study of 2026-11-11: on calm days OV's top picks lost their OR1/OR2 breakout edge,
   in 2026 and again out of sample in 2023-2025. There is no middle colour: days at 10.5-12 did as well as
   days at 12-15. It is display only; no setup or alert reads it. `RV20 –` means fewer than 21 daily
-  closes are loaded. The code is in `scanner/spy_rv.py`.
+  closes are loaded. Click it to see how it moved: a small chart and a list of RV20 after each of the
+  last 7, 14 or 30 closes, with the 10.5 line dashed and how many of those days were calm. The browser
+  remembers the last choice. The code is in `scanner/spy_rv.py`.
 - **⋯** holds the rarer controls: save the layout as a new screen, theme, hide the bar, fullscreen.
 
 ### Themes and shortcuts
@@ -488,8 +494,8 @@ request, 2026-11-07):
   they were, with a **past day** badge. The notes are about that day.
 - For a day before the module ran, the window shows OV's own ranked list for it, from the
   module's history files, with the same columns and row details and one of these badges:
-  **OV 2026 rebuild** (OV's current code and settings, run again on clean bars for that day; it
-  can differ from what OV showed live that morning) or **OV live scan** (OV's own live 09:25 ET
+  **OV rebuild** (OV's current code and settings, run again on clean bars for that day, for
+  2020 to 2026; it can differ from what OV showed live that morning, or from OV's stored backtest) or **OV live scan** (OV's own live 09:25 ET
   scan that morning).
 - A day with neither says "Nothing saved for this day": a market holiday, or a day before the
   saved history starts. A file that can't be used says so, with the reason.
