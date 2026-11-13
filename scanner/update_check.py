@@ -89,7 +89,10 @@ def check_once(fetch=None) -> UpdateInfo:
                 })
                 with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
                     return json.loads(r.read(_MAX_BYTES + 1)[:_MAX_BYTES].decode("utf-8"))
-        data = fetch()
+        # fork: one netlog call line (scanner/netlog.py); urllib has no hook, so no attempts or wire time.
+        from scanner import netlog
+        with netlog.call("github", "releases_latest", "update_check", visible=False):
+            data = fetch()
         if not isinstance(data, dict):
             raise ValueError("unexpected release payload")
         tag = str(data.get("tag_name") or "")

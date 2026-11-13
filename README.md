@@ -40,8 +40,8 @@ by name, and settings can only be changed from a page this machine served, so a 
 cannot reach the scanner through your browser.
 
 - **Stays on your machine:** your API keys in `.env`, the setups, universe filters, watchlists and
-  screens you build, the bar caches, and the alert archives. All of it under `data/`, which is
-  gitignored.
+  screens you build, the bar caches, the alert archives, and the record of outside calls and
+  warnings (`data/netlog/`, `data/logs/`). All of it under `data/`, which is gitignored.
 - **Goes out, to your own accounts:** market data requests to Alpaca or Charles Schwab, signed with
   your keys. They see the symbols you scan, as any market-data client would.
 - **Goes out, unauthenticated:** company fundamentals from Yahoo Finance, and per-symbol news
@@ -243,6 +243,32 @@ websocket and asks Alpaca's REST bars endpoint every 5 seconds for the last few 
 bars, 1,000 symbols per request. These are Alpaca's own bars, handed on 3 seconds after each minute
 closes, so alerts come a few seconds later than on the stream. The code is in
 `scanner/data/alpaca_poll.py`.
+
+**A record of every outside call (fork).** The scanner writes one JSON line per outside call to
+`data/netlog/YYYY-MM-DD.jsonl` (UTC date), so a slow or failed call, late bars or a shared rate
+limit can be explained afterwards. It is a record only: nothing reads it back, nothing waits for it,
+and a failure to write it never reaches the scanner. `EDGE_SCANNER_NETLOG=0` in `.env` turns it off,
+together with the log file below. The code is in `scanner/netlog.py`. Files are kept; expect about
+15 MB a day, most of it the 5-second bar poll, which runs around the clock. Every line has `ts` (UTC), `kind` and
+`app` (`edge-scanner`); Edge Trader writes the same format.
+
+| kind | one line per |
+|---|---|
+| `answer` | HTTP answer from Alpaca, Alpaca news, Yahoo or Nasdaq RSS, Nasdaq Trader: `vendor`, `path` (no query), `http`, `wire_ms` (send until headers), `bytes`, the vendor's `date`, `retry_after`, and Alpaca's rate-limit headers as `rl_limit`, `rl_remaining`, `rl_reset`. alpaca-py retries a 429 or 504 inside one call; each attempt is its own line. |
+| `call` | logical call, written when it ends: `vendor`, `endpoint`, `purpose` (`poller`, `ov_picks_live`, `chart`, `today`, `history`, `warmup`, `news`, ...), `wait_ms` + `wire_ms` + `between_ms` (retry sleeps, pages) + `after_ms` (body, parsing, DataFrame) = `total_ms`, `attempts`, `http`, `ok`, `error` (`timeout_connect`, `timeout_read`, `tls`, `dns`, `refused`, `reset`, `http_429`, `http_4xx`, `http_5xx`, `other`), `items`, `data_ts` (newest vendor time in the answer) and `data_age_ms`. The bar poll writes one per pass, with `pass_ms`, `handed` and `overrun` (the pass took longer than 5 s). yfinance and the GitHub check do not use a hooked session, so their `attempts` and `wire_ms` are null. |
+| `inflight` | call still open after 2, 5, 10, 30 and 60 s. alpaca-py sets no request timeout, so this is how a hung call shows. |
+| `bars` | minute bar, written once the poll stops asking for that minute: `expected` symbols, `with_bar`, `first_seen_ms_after_close` and `handed_ms_after_close` (min, p50, p95, max over the symbols with a bar), `seen_before_close` (symbols whose bar first came before the minute ended), and `changed_after_handed` with `max_volume_change_pct` (symbols whose volume or close changed in a later answer after the bar was handed on, and the largest volume change in % of the handed volume, signed). The poll does this work after it hands the bars on. |
+| `route` | request to `/api/v2/ov-picks*`, `/api/v2/clock` or `/api/bars/...`: `route`, `http`, `ms`, `from` and `req` (Edge Trader's `X-Edge-App` and `X-Edge-Req` headers). Requests the local-only guard refuses are timed too; they have no route pattern, so `route` is their path, cut at 200 characters. |
+| `lag` | minute: how late a 100 ms heartbeat thread and the web server's event loop wake, threads, CPU seconds, memory, queue, `dropped` lines, calls in flight, live-feed clients. |
+| `note` | start (version, commit when known), the bar poll's start. |
+
+No line holds API keys, request or answer bodies, query strings or `.env` values; error texts have
+URLs cut at the query and the Alpaca keys replaced. `GET /api/v2/diag/net` (read only) sums up the
+calls in memory: per vendor, endpoint and purpose, for the last 5 minutes and since 09:25 ET today,
+the count, errors by class, p50, p95 and max of `wire_ms` and `total_ms`, and the age of the last
+good call; also the lowest `rl_remaining` seen, the calls in flight, the last `lag` and `bars` lines
+and `dropped`. WARNING and worse log lines also go to `data/logs/edge-scanner-YYYY-MM-DD.log` (UTC
+date), so they survive a rebuild of the container.
 
 **SPY RV20 in the top bar (fork).** The top bar shows SPY's 20-day realized volatility next to the
 market regime: red at 10.5 or lower (a calm SPY day), green above. It comes from the SPY daily
