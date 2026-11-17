@@ -230,8 +230,14 @@ def test_inflight_lines_at_2_and_5_s_for_a_call_that_hangs_and_none_for_a_fast_o
 
 # ── bar lateness ─────────────────────────────────────────────────────────────
 
+def _bar_ts(hhmm):
+    """HH:MM on T0's day, in UTC. A bare "14:31" would land on the day the tests run, so these
+    tests passed only on 2026-11-13, when they were written (fork PR #44)."""
+    return pd.Timestamp(f"{T0.date().isoformat()} {hhmm}", tz="UTC")
+
+
 def _frame(rows):
-    idx = pd.MultiIndex.from_tuples([(s, pd.Timestamp(t, tz="UTC")) for s, t in rows], names=["symbol", "timestamp"])
+    idx = pd.MultiIndex.from_tuples([(s, _bar_ts(t)) for s, t in rows], names=["symbol", "timestamp"])
     return pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1.0}, index=idx)
 
 
@@ -263,7 +269,7 @@ def test_bars_lines_worked_by_hand_three_symbols_two_minutes_one_without_a_bar(n
 
 def _frame_v(rows):
     """Bars with volume and close: (symbol, HH:MM, volume, close)."""
-    idx = pd.MultiIndex.from_tuples([(s, pd.Timestamp(t, tz="UTC")) for s, t, _, _ in rows], names=["symbol", "timestamp"])
+    idx = pd.MultiIndex.from_tuples([(s, _bar_ts(t)) for s, t, _, _ in rows], names=["symbol", "timestamp"])
     return pd.DataFrame({"open": 1.0, "high": 1.0, "low": 1.0, "close": [c for *_, c in rows],
                          "volume": [v for _, _, v, _ in rows]}, index=idx)
 
