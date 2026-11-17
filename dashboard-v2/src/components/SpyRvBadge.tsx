@@ -19,10 +19,11 @@ export function SpyRvBadge({ info }: { info: ClockInfo | null | undefined }) {
   }
   const cut = rv.calm_max
   const through = rv.through ? ` through the ${rv.through} close` : ''
-  // Ash adopted half size on calm days for the OR1 strategy (study thread, 2026-11-12 03:41 UTC).
+  // Ash's OR1 calm-day rule: half size from 2026-11-12; since 2026-11-17 (project thread, decision
+  // card 18:23:51 UTC) no longs and shorts at full size, because the calm-day loss sat on longs.
   const meaning = rv.calm
-    ? `Calm SPY (${cut} or lower): OV picks lost their OR1/OR2 edge on such days. OR1 at half size.`
-    : `Above ${cut}: not a calm SPY day. OR1 at full size.`
+    ? `Calm SPY (${cut} or lower): OV picks' OR1 longs lost their edge on such days. OR1: no longs, shorts at full size.`
+    : `Above ${cut}: not a calm SPY day. OR1 longs and shorts at full size.`
   return (
     <div style={{ position: 'relative' }}>
       <button type="button" className={`regime spy-rv ${rv.calm ? 'calm' : 'active'}${open ? ' open' : ''}`}
