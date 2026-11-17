@@ -285,7 +285,9 @@ or `NEWS_RSS_SOURCES=` (empty) for Alpaca only.
   names that session. It is red at 10.5 or lower (a calm SPY day) and green above. 10.5 comes from the
   realized-volatility study of 2026-11-11: on calm days OV's top picks lost their OR1/OR2 breakout edge,
   in 2026 and again out of sample in 2023-2025. There is no middle colour: days at 10.5-12 did as well as
-  days at 12-15. It is display only; no setup or alert reads it. `RV20 –` means fewer than 21 daily
+  days at 12-15. The tooltip also states Ash's OR1 rule for the day: on a calm day no OR1 longs and
+  shorts at full size (since 2026-11-17; the calm-day loss sat on longs in 2026, 2024 and 2025), on
+  other days both sides at full size. It is display only; no setup or alert reads it. `RV20 –` means fewer than 21 daily
   closes are loaded. Click it to see how it moved: a small chart and a list of RV20 after each of the
   last 7, 14 or 30 closes, with the 10.5 line dashed and how many of those days were calm. The browser
   remembers the last choice. The code is in `scanner/spy_rv.py`.
