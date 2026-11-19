@@ -8,7 +8,7 @@ tmp_path. Nothing here reaches the network or sleeps.
 import json
 import shutil
 import socket
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -527,3 +527,23 @@ def test_the_requests_go_to_the_feeds_own_client_with_the_configured_feed():
     bars = rec.alpaca_bars(feed)(datetime(2026, 11, 5).date(), ["AAAA", "SPY"])
     assert sorted(bars) == ["AAAA", "SPY"]
     assert spans == [(["AAAA", "SPY"], _et("2026-11-05 09:30:00"), _et("2026-11-05 09:31:00"))]
+
+
+@pytest.mark.parametrize("at, wait", [
+    ("2026-11-05 09:30:30", 0.5),
+    ("2026-11-05 09:30:58.8", 0.5),      # not yet fast
+    ("2026-11-05 09:30:59.1", 0.2),      # fast from 09:30:59
+    ("2026-11-05 09:30:59.95", 0.05),    # never past 09:31:00 itself
+    ("2026-11-05 09:31:00", 0.2),
+    ("2026-11-05 09:31:02.9", 0.2),
+    ("2026-11-05 09:31:03", 0.5),        # back to POLL_SECONDS
+    ("2026-11-05 09:35:59", 0.5),
+])
+def test_snapshots_come_every_0_2_s_from_0930_59_to_0931_03(tmp_path, at, wait):
+    """Ash's go "do all 5" (project thread, 2026-11-19 17:02:46 UTC), change 4: the 09:30 bar becomes
+    final in the snapshot at about 09:31:00.1 ET, and Edge Trader's armed plan sends on it. Five
+    snapshots a second for four seconds; two a second the rest of the window."""
+    assert (rec.FAST_POLL_SECONDS, rec.FAST_FROM_ET, rec.FAST_UNTIL_ET) == (0.2, time(9, 30, 59), time(9, 31, 3))
+    s = Setup(tmp_path, at)
+    assert s.recorder.wait() == pytest.approx(wait)
+

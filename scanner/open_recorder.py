@@ -27,13 +27,17 @@ starts inside the window joins it.
 
 What it asks:
 
-- Every POLL_SECONDS one snapshot request for the day's tickers (GET /v2/stocks/snapshots).
+- Every POLL_SECONDS one snapshot request for the day's tickers (GET /v2/stocks/snapshots),
+  every FAST_POLL_SECONDS from FAST_FROM_ET (09:30:59) to FAST_UNTIL_ET (09:31:03), when the
+  09:30 bar becomes final and Edge Trader's armed plan sends on it (Ash's go "do all 5",
+  project thread, 2026-11-19 17:02:46 UTC, change 4: read faster around 09:31). The wait
+  never runs past 09:31:00 itself, so a request starts on the minute.
 - From BARS_FROM_ET (09:31:00) the 09:30 ET minute bars, every BAR_SECONDS until each
   ticker's bar has been seen, at most until BARS_UNTIL_ET (09:31:30).
 - Once from BARS_AGAIN_ET (09:35:30) the same bars again: the settled reading, to see
   whether late prints changed them.
 
-That is about 870 requests in seven minutes, two a second at most.
+That is about 880 requests in seven minutes: two a second, five a second for four seconds.
 
 What it writes: one JSON line per request to data/open_recorder/YYYY-MM-DD.jsonl (the
 scanner's own data folder), with the wall time just before and just after the request
@@ -92,6 +96,9 @@ VERSION = 1     # of the line format; raise it when a field changes meaning
 FROM_ET = time(9, 29)
 UNTIL_ET = time(9, 36)
 POLL_SECONDS = 0.5
+FAST_POLL_SECONDS = 0.2         # change 4 of Ash's "do all 5" (2026-11-19): a start number
+FAST_FROM_ET = time(9, 30, 59)
+FAST_UNTIL_ET = time(9, 31, 3)
 BAR_ET = time(9, 30)            # the bar the recorder asks for
 BARS_FROM_ET = time(9, 31)
 BARS_UNTIL_ET = time(9, 31, 30)
@@ -201,7 +208,12 @@ class OpenRecorder:
             return IDLE_SECONDS
         start, end = _at(now.date(), FROM_ET), _at(now.date(), UNTIL_ET)
         if start <= now < end:
-            return POLL_SECONDS
+            fast_from, fast_until = _at(now.date(), FAST_FROM_ET), _at(now.date(), FAST_UNTIL_ET)
+            wait = FAST_POLL_SECONDS if fast_from <= now < fast_until else POLL_SECONDS
+            minute = _at(now.date(), BARS_FROM_ET)
+            if now < minute:
+                wait = min(wait, (minute - now).total_seconds())
+            return wait
         if now < start:
             return min(IDLE_SECONDS, (start - now).total_seconds())
         return IDLE_SECONDS
