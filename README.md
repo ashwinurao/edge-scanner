@@ -355,15 +355,16 @@ scanner shows the day's picks. It never writes that folder.
 - **The opening recorder** (the owner's request, 2026-11-13: "i want to have tracking in today so
   we have some data to analyze"). On a weekday with top picks, from 09:29:00 to 09:36:00 ET, the
   scanner saves what Alpaca answers for the day's top picks and SPY: a snapshot every half
-  second, the 09:30 ET bars each second from 09:31:00 until every ticker has one (at most until
+  second (every 0.2 s from 09:30:59 to 09:31:03, when the 09:30 bar becomes final and Edge
+  Trader's armed plan sends on it; the owner's go "do all 5", 2026-11-19), the 09:30 ET bars each second from 09:31:00 until every ticker has one (at most until
   09:31:30), and the same bars once more from 09:35:30. Each request is one line in
   `data/open_recorder/YYYY-MM-DD.jsonl` with the time just before and after it, how long it
   took and what came back, so the age of the data at the open, how the first minute's range
   forms and when its bar first appears can be measured. A day is about 2 MB, and the newest 90
   days are kept. It only
   reads: it changes nothing the scanner scans or shows, places no orders and never opens a
-  websocket (about 870 REST requests a day through the scanner's own data client, two a second
-  at most). A failed request is written down and the next one waits 5 seconds; a rate-limit
+  websocket (about 880 REST requests a day through the scanner's own data client, two a second,
+  five a second for those four seconds). A failed request is written down and the next one waits 5 seconds; a rate-limit
   answer stops it until the next day. It runs in its own thread, so a slow answer holds up
   nothing else. `OPEN_RECORDER=0` in `.env` turns it off. The code is in
   `scanner/open_recorder.py`.

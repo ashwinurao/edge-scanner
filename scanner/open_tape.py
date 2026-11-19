@@ -7,8 +7,9 @@ parallel branches right now, build, test and then wait to merge those branches" 
 Why: an armed plan in Edge Trader needs a price at most about a second old and the first
 minute's range as soon as it exists. GET /api/v2/ov-picks refreshes every 2 s and has no price
 after 09:31 ET. The opening recorder (scanner/open_recorder.py) already asks Alpaca for the
-picks' snapshots twice a second from 09:29 to 09:36 ET. The tape keeps what it just read, in
-memory, and GET /api/v2/ov-picks/open-tape (scanner/ov_picks_route.py) serves it. No new
+picks' snapshots twice a second from 09:29 to 09:36 ET (five a second from 09:30:59 to
+09:31:03). The tape keeps what it just read, in memory, and GET /api/v2/ov-picks/open-tape
+(scanner/ov_picks_route.py) serves it. No new
 Alpaca request, no websocket, no key in Edge Trader.
 
 What it keeps, under its own lock:
