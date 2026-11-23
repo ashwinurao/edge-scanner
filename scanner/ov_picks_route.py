@@ -79,6 +79,9 @@ each day up to today with a history file (contract.history_days). It checks only
 the file is there; the day's own answer says whether it can be used.
 Its answer has every key in DAYS_FIELDS, with the same set_up and reason_code meanings.
 
+GET /api/v2/ov-picks/plan-bars serves today's 1-minute Alpaca bars from 08:30 to 11:00 ET, and the
+forming minute, for Edge Trader's Opening plan charts (scanner/plan_bars.py), cached 2 s.
+
 GET /api/v2/ov-picks/open-tape serves the open tape (scanner/open_tape.py, brief 15 of the
 OV entries build): what the opening recorder (scanner/open_recorder.py) last read from Alpaca
 for the day's top picks, from memory, for Edge Trader's armed plan. It makes no request and
@@ -103,7 +106,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 
-from scanner import open_recorder, open_tape, ov_picks_live, past_day
+from scanner import open_recorder, open_tape, ov_picks_live, past_day, plan_bars
 from scanner.ov_picks_day import register_morning
 
 log = logging.getLogger(__name__)
@@ -161,6 +164,8 @@ def register(app: FastAPI, app_state: Any,
         first_minute_fetch = ov_picks_live.alpaca_fetch(feed)
         first_minute_so_far = first_minute_so_far or ov_picks_live.alpaca_forming(feed)
     bars = ov_picks_live.FirstMinuteBars(first_minute_fetch, forming=first_minute_so_far)
+    # Edge Trader's Opening plan charts, from Alpaca (scanner/plan_bars.py; Ash, 2026-11-23).
+    app.state.plan_bars = plan_bars.register(app, app_state)
 
     # A plain def: FastAPI runs it in a worker thread, so the file reads never block the
     # event loop that serves /ws/alerts.

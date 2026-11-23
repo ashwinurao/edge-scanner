@@ -368,6 +368,17 @@ scanner shows the day's picks. It never writes that folder.
   answer stops it until the next day. It runs in its own thread, so a slow answer holds up
   nothing else. `OPEN_RECORDER=0` in `.env` turns it off. The code is in
   `scanner/open_recorder.py`.
+- **The Opening plan's chart bars** (2026-11-23, Ash's ask in the project thread, 20:18:45 UTC: "move
+  charts over to alpaca ... update every 2 secs"). `GET /api/v2/ov-picks/plan-bars?tickers=AAA,BBB` serves
+  today's 1-minute Alpaca bars from 08:30 to 11:00 ET for up to 8 names (`bars`, each with `t`, its
+  minute's start in seconds since 1970 UTC), the forming minute marked `forming` (Alpaca's own bar for
+  it widened by the latest trade, or the latest trade alone), `at` (when they were read), `age_s` and
+  `error`. Edge Trader's A1 Opening plan screen asks it every 2 s instead of Schwab's price history.
+  Only when asked, REST only on the scanner's own Alpaca data client: one multi-symbol bars request and
+  one snapshot request per read, cached 2 s from 08:30 to 11:01 ET and 60 s outside. While a read runs,
+  other asks get the cached answer at once. After a failed read the next waits 5 s, then 10, 20, 40,
+  60, and the answer keeps the last good bars with the error. `Cache-Control: no-store`. The code is in
+  `scanner/plan_bars.py`.
 - **The open tape** (brief 15 of the OV entries build, for Edge Trader's armed plan).
   `GET /api/v2/ov-picks/open-tape` serves what the opening recorder just read, from memory: the
   day, the top picks in rank order and SPY (`tickers`, `reference`), the newest good snapshot
