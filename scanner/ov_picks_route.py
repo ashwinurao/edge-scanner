@@ -66,7 +66,8 @@ without a live column is served as read. The minute is the route's only network 
 through the scanner's Alpaca data client, REST only: one cached bars request per day shown,
 from 09:31:03 ET (Ash's go, project thread, 2026-11-07), and, today only, from 09:30 ET until
 each ticker has its bar and at most until 09:35 ET, one snapshot request for the tickers
-still without one at most every 2 seconds while the window asks (Ash, project thread,
+still without one about every 2 seconds while the window asks, never sooner than 1.75 s
+after the last (scanner/ov_picks_live.py LIVE_SLACK_SECONDS) (Ash, project thread,
 2026-11-08 05:10 UTC: "can you make those two columns update live after 9:30 market
 open?"; his go for the snapshot's 09:30 bar, project chat, 2026-11-13 15:38:32 UTC;
 scanner/ov_picks_live.py). A failed request leaves the cells blank, or as they
